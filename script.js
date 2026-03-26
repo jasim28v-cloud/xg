@@ -1,501 +1,484 @@
-// script.js
-import { database, auth, signInAnonymously, onAuthStateChanged } from './firebase-config.js';
-import { 
-  ref, push, onValue, set, update, get, 
-  query, orderByChild, limitToLast, remove,
-  increment, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/10.7.2/firebase-database.js";
+import { database, auth, storage, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, storageRef, uploadBytes, getDownloadURL } from './firebase-config.js';
+import { ref, push, onValue, set, update, get, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.2/firebase-database.js";
 
-// ---------- تكوين Cloudinary ----------
-const CLOUD_NAME = "dnillsbmi";
-const UPLOAD_PRESET = "ekxzvogb";
-const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`;
-
-// ---------- متغيرات عامة ----------
+// بيانات المشرف
+const ADMIN_EMAIL = "jasim28v@gmail.com";
 let currentUser = null;
 let currentUserId = null;
 let currentUsername = null;
+let isAdmin = false;
 let allVideos = [];
 let currentVideoIdForComment = null;
-let selectedVideoFile = null;
+let currentChatWith = null;
+let allUsers = [];
 
-// ---------- تهيئة المستخدم ----------
-async function initUser() {
-  return new Promise((resolve) => {
-    onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        currentUser = user;
-        currentUserId = user.uid;
-        
-        // جلب أو إنشاء بيانات المستخدم
-        const userRef = ref(database, `users/${currentUserId}`);
-        const snapshot = await get(userRef);
-        
-        if (!snapshot.exists()) {
-          let username = localStorage.getItem("username");
-          if (!username) {
-            username = prompt("أهلاً بك في Tokixx! 👋\nأدخل اسم المستخدم الخاص بك:", "مستخدم_Tokixx");
-            if (!username || username.trim() === "") username = "مستخدم_" + Math.random().toString(36).substr(2, 6);
-            localStorage.setItem("username", username);
-          }
-          currentUsername = username;
-          await set(userRef, {
-            username: currentUsername,
-            createdAt: serverTimestamp(),
-            followers: {},
-            following: {},
-            totalLikes: 0,
-            avatar: `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(currentUsername)}`
-          });
-        } else {
-          currentUsername = snapshot.val().username;
-        }
-        
-        document.getElementById("profileUsername").innerText = currentUsername;
-        resolve();
-      } else {
-        // تسجيل دخول مجهول
-        const result = await signInAnonymously(auth);
-        currentUser = result.user;
-        currentUserId = currentUser.uid;
-        let username = localStorage.getItem("username");
-        if (!username) {
-          username = prompt("أهلاً بك في Tokixx! 👋\nأدخل اسم المستخدم الخاص بك:", "مستخدم_Tokixx");
-          if (!username || username.trim() === "") username = "مستخدم_" + Math.random().toString(36).substr(2, 6);
-          localStorage.setItem("username", username);
-        }
-        currentUsername = username;
-        const userRef = ref(database, `users/${currentUserId}`);
-        await set(userRef, {
-          username: currentUsername,
-          createdAt: serverTimestamp(),
-          followers: {},
-          following: {},
-          totalLikes: 0,
-          avatar: `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(currentUsername)}`
-        });
-        document.getElementById("profileUsername").innerText = currentUsername;
-        resolve();
-      }
-    });
-  });
-}
-
-// ---------- دوال مساعدة ----------
-function showToast(msg, duration = 2000) {
+function showToast(msg) {
   const toast = document.getElementById('toastMsg');
   toast.innerText = msg;
   toast.style.opacity = '1';
-  setTimeout(() => { toast.style.opacity = '0'; }, duration);
+  setTimeout(() => { toast.style.opacity = '0'; }, 2000);
 }
 
-// ---------- جلب الفيديوهات ----------
-function loadVideosFromFirebase() {
-  const videosRef = ref(database, 'videos');
-  onValue(videosRef, (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-      allVideos = Object.entries(data).map(([id, video]) => ({ id, ...video }));
-      allVideos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      renderFeed('feedContainer', allVideos);
-      renderFeed('friendsFeed', allVideos);
-      updateProfileStats();
-    } else {
-      allVideos = [];
-      renderFeed('feedContainer', []);
-      renderFeed('friendsFeed', []);
-    }
-  });
+// التحقق من المشرف
+function checkAdmin(email) {
+  return email === ADMIN_EMAIL;
 }
+
+// عرض لوحة التحكم
+function showAdminPanel() {
+  const panel = document.getElementById('adminPanel');
+  const content = document.getElementById('adminContent');
+  const usersRef = ref(database, 'users');
+  onValue(usersRef, (snapshot) => {
+    const users = snapshot.val();
+    content.innerHTML = '<h3 style="color:white; padding:10px;">👥 المستخدمين</h3>';
+    if (users) {
+      Object.entries(users).forEach(([uid, user]) => {
+        content.innerHTML += `
+          <div class="admin-item">
+            <span>👤 ${user.username} (${user.email || 'لا يوجد بريد'})</span>
+            <div>
+              <button class="ban-btn" onclick="window.banUser('${uid}')"><i class="fas fa-ban"></i> حظر</button>
+            </div>
+          </div>
+        `;
+      });
+    }
+    content.innerHTML += '<h3 style="color:white; padding:10px;">🎬 الفيديوهات</h3>';
+    const videosRef = ref(database, 'videos');
+    onValue(videosRef, (snapshot) => {
+      const videos = snapshot.val();
+      if (videos) {
+        Object.entries(videos).forEach(([vid, video]) => {
+          content.innerHTML += `
+            <div class="admin-item">
+              <span>🎥 ${video.username}: ${video.caption?.substring(0, 30) || 'بدون وصف'}</span>
+              <button class="delete-btn" onclick="window.deleteVideo('${vid}')"><i class="fas fa-trash"></i> حذف</button>
+            </div>
+          `;
+        });
+      }
+    });
+  });
+  panel.classList.add('show');
+}
+
+window.banUser = async (userId) => {
+  if (confirm('هل أنت متأكد من حظر هذا المستخدم؟')) {
+    await set(ref(database, `banned/${userId}`), true);
+    showToast('✅ تم حظر المستخدم');
+  }
+};
+
+window.deleteVideo = async (videoId) => {
+  if (confirm('هل أنت متأكد من حذف هذا الفيديو؟')) {
+    await remove(ref(database, `videos/${videoId}`));
+    showToast('✅ تم حذف الفيديو');
+  }
+};
 
 // عرض الفيديوهات
-function renderFeed(containerId, videos) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  
-  if (!videos || videos.length === 0) {
-    container.innerHTML = '<div class="loading"><i class="fas fa-video"></i> لا توجد فيديوهات حالياً<br><span style="font-size:12px;">قم برفع أول فيديو لك!</span></div>';
+function renderFeed(videos) {
+  const container = document.getElementById('feedContainer');
+  if (!videos.length) {
+    container.innerHTML = '<div class="loading">لا توجد فيديوهات</div>';
     return;
   }
-  
   container.innerHTML = '';
   videos.forEach(video => {
     const likesCount = video.likes ? Object.keys(video.likes).length : 0;
     const isLiked = video.likes && video.likes[currentUserId];
-    
+    const hashtags = video.hashtags || [];
     const videoDiv = document.createElement('div');
     videoDiv.className = 'video-item';
     videoDiv.setAttribute('data-vid', video.id);
     videoDiv.innerHTML = `
       <video class="video-element" src="${video.videoUrl}" loop muted playsinline autoplay></video>
       <div class="floating-right">
-        <div class="action-btn avatar-ring">
-          <img src="${video.userAvatar || `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(video.username || 'U')}`}">
-        </div>
-        <div class="action-btn like-btn" data-id="${video.id}">
-          <i class="${isLiked ? 'fas' : 'far'} fa-heart"></i>
-          <span class="like-count">${likesCount}</span>
-        </div>
-        <div class="action-btn comment-open-btn" data-id="${video.id}">
-          <i class="far fa-comment-dots"></i>
-          <span class="comment-count">${video.commentCount || 0}</span>
-        </div>
-        <div class="action-btn share-btn" data-url="${video.videoUrl}">
-          <i class="fas fa-share"></i>
-          <span>شارك</span>
-        </div>
-        <div class="action-btn sound-icon">
-          <i class="fas fa-music"></i>
-        </div>
+        <div class="action-btn avatar-ring"><img src="${video.userAvatar || 'https://ui-avatars.com/api/?background=ff0050&color=fff&name=' + encodeURIComponent(video.username)}"></div>
+        <div class="action-btn like-btn" data-id="${video.id}"><i class="${isLiked ? 'fas' : 'far'} fa-heart"></i><span class="like-count">${likesCount}</span></div>
+        <div class="action-btn comment-open-btn" data-id="${video.id}"><i class="far fa-comment-dots"></i><span>${video.commentCount || 0}</span></div>
+        <div class="action-btn share-btn" data-url="${video.videoUrl}"><i class="fas fa-share"></i><span>شارك</span></div>
       </div>
       <div class="video-info">
-        <div class="username">${video.username || "مستخدم"} <i class="fas fa-check-circle verified-icon"></i></div>
+        <div class="username">${video.username} <i class="fas fa-check-circle verified-icon"></i></div>
         <div class="caption">${video.caption || ""}</div>
-        <div class="sound-marquee">
-          <i class="fas fa-record-vinyl"></i>
-          <span class="sound-name">${video.sound || "صوت شائع"}</span>
-          <i class="fas fa-angle-right"></i>
-        </div>
+        <div class="hashtags">${hashtags.map(t => `<span class="hashtag">#${t}</span>`).join('')}</div>
       </div>
     `;
     container.appendChild(videoDiv);
+    setTimeout(() => {
+      const watermark = document.createElement('div');
+      watermark.className = 'watermark';
+      watermark.innerHTML = `<i class="fas fa-heart"></i> Tokixx | @${video.username}`;
+      videoDiv.appendChild(watermark);
+    }, 100);
   });
-  attachVideoEvents(containerId);
+  attachVideoEvents();
 }
 
-// ربط الأحداث
-function attachVideoEvents(containerId) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  
-  container.querySelectorAll('.like-btn').forEach(btn => {
-    btn.removeEventListener('click', handleLike);
-    btn.addEventListener('click', handleLike);
-  });
-  
-  container.querySelectorAll('.comment-open-btn').forEach(btn => {
-    btn.removeEventListener('click', openCommentPanel);
-    btn.addEventListener('click', openCommentPanel);
-  });
-  
-  container.querySelectorAll('.share-btn').forEach(btn => {
-    btn.removeEventListener('click', handleShare);
-    btn.addEventListener('click', handleShare);
-  });
-  
-  container.querySelectorAll('.sound-icon').forEach(btn => {
-    btn.addEventListener('click', () => showToast("🎵 استمع إلى هذا الصوت على Tokixx"));
-  });
-  
-  // تحسين تشغيل الفيديو عند التمرير
-  const videos = container.querySelectorAll('.video-element');
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.play().catch(e => console.log('Auto-play prevented:', e));
+function attachVideoEvents() {
+  document.querySelectorAll('.like-btn').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const videoId = btn.getAttribute('data-id');
+      const likeRef = ref(database, `videos/${videoId}/likes/${currentUserId}`);
+      const snapshot = await get(likeRef);
+      if (snapshot.exists()) {
+        await remove(likeRef);
+        btn.querySelector('i').classList.replace('fas', 'far');
+        btn.querySelector('.like-count').innerText = parseInt(btn.querySelector('.like-count').innerText) - 1;
       } else {
-        entry.target.pause();
+        await set(likeRef, true);
+        btn.querySelector('i').classList.replace('far', 'fas');
+        btn.querySelector('.like-count').innerText = parseInt(btn.querySelector('.like-count').innerText) + 1;
       }
-    });
-  }, { threshold: 0.5 });
-  
-  videos.forEach(video => observer.observe(video));
+    };
+  });
+  document.querySelectorAll('.comment-open-btn').forEach(btn => {
+    btn.onclick = () => openCommentPanel(btn.getAttribute('data-id'));
+  });
+  document.querySelectorAll('.share-btn').forEach(btn => {
+    btn.onclick = () => {
+      navigator.clipboard.writeText(btn.getAttribute('data-url'));
+      showToast('✅ تم نسخ الرابط');
+    };
+  });
 }
 
-// معالجة الإعجاب
-async function handleLike(e) {
-  e.stopPropagation();
-  const btn = e.currentTarget;
-  const videoId = btn.getAttribute('data-id');
-  const likeRef = ref(database, `videos/${videoId}/likes/${currentUserId}`);
-  const videoRef = ref(database, `videos/${videoId}`);
-  
-  const snapshot = await get(likeRef);
-  if (snapshot.exists()) {
-    await remove(likeRef);
-    btn.querySelector('i').classList.remove('fas');
-    btn.querySelector('i').classList.add('far');
-    const countSpan = btn.querySelector('.like-count');
-    countSpan.innerText = parseInt(countSpan.innerText) - 1;
-  } else {
-    await set(likeRef, true);
-    btn.querySelector('i').classList.remove('far');
-    btn.querySelector('i').classList.add('fas');
-    const countSpan = btn.querySelector('.like-count');
-    countSpan.innerText = parseInt(countSpan.innerText) + 1;
-  }
-}
-
-// معالجة المشاركة
-function handleShare(e) {
-  e.stopPropagation();
-  const btn = e.currentTarget;
-  const videoUrl = btn.getAttribute('data-url');
-  if (videoUrl) {
-    navigator.clipboard.writeText(videoUrl);
-    showToast("✅ تم نسخ رابط الفيديو!");
-  }
-}
-
-// فتح لوحة التعليقات
-async function openCommentPanel(e) {
-  const btn = e.currentTarget;
-  const videoId = btn.getAttribute('data-id');
+async function openCommentPanel(videoId) {
   currentVideoIdForComment = videoId;
   const panel = document.getElementById('commentPanel');
   const listDiv = document.getElementById('commentList');
-  
   const commentsRef = ref(database, `comments/${videoId}`);
   const snapshot = await get(commentsRef);
   const comments = snapshot.val() ? Object.values(snapshot.val()) : [];
-  
-  listDiv.innerHTML = '';
-  if (comments.length === 0) {
-    listDiv.innerHTML = '<div style="color:#aaa; text-align:center; padding:20px;">💬 لا توجد تعليقات بعد، كن أول من يعلق!</div>';
-  } else {
-    comments.reverse().forEach(comm => {
-      const commentEl = document.createElement('div');
-      commentEl.innerHTML = `
-        <div class="comment-item">
-          <img class="comment-avatar" src="${comm.avatar || `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(comm.username)}`}">
-          <div class="comment-content">
-            <div><span class="comment-name">${comm.username}</span><span class="comment-time"> ${comm.time}</span></div>
-            <div class="comment-text">${comm.text}</div>
-          </div>
+  listDiv.innerHTML = comments.length ? '' : '<div style="color:#aaa; text-align:center;">لا توجد تعليقات</div>';
+  comments.reverse().forEach(comm => {
+    listDiv.innerHTML += `
+      <div class="comment-item">
+        <img class="comment-avatar" src="${comm.avatar}">
+        <div class="comment-content">
+          <div><span class="comment-name">${comm.username}</span><span class="comment-time"> ${comm.time}</span></div>
+          <div class="comment-text">${comm.text}</div>
         </div>
-      `;
-      listDiv.appendChild(commentEl);
-    });
-  }
+      </div>
+    `;
+  });
   panel.classList.add('open');
 }
 
-// إرسال تعليق
 document.getElementById('sendCommentBtn')?.addEventListener('click', async () => {
   const input = document.getElementById('commentInput');
-  const text = input.value.trim();
-  if (!text || !currentVideoIdForComment) return;
-  
-  const newCommentRef = push(ref(database, `comments/${currentVideoIdForComment}`));
-  await set(newCommentRef, {
+  if (!input.value.trim() || !currentVideoIdForComment) return;
+  await push(ref(database, `comments/${currentVideoIdForComment}`), {
     username: currentUsername,
     userId: currentUserId,
     avatar: `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(currentUsername)}`,
-    text: text,
+    text: input.value,
     time: new Date().toLocaleString('ar'),
-    likes: 0
   });
-  
   const videoRef = ref(database, `videos/${currentVideoIdForComment}/commentCount`);
-  const currentCount = (await get(videoRef)).val() || 0;
-  await set(videoRef, currentCount + 1);
-  
-  const videoItem = document.querySelector(`.video-item[data-vid="${currentVideoIdForComment}"]`);
-  if (videoItem) {
-    const commentSpan = videoItem.querySelector('.comment-count');
-    if (commentSpan) commentSpan.innerText = currentCount + 1;
-  }
-  
+  const count = (await get(videoRef)).val() || 0;
+  await set(videoRef, count + 1);
   input.value = '';
-  openCommentPanel({ currentTarget: { getAttribute: () => currentVideoIdForComment } });
-  showToast("✨ تم إضافة تعليقك");
+  openCommentPanel(currentVideoIdForComment);
+  showToast('✅ تم إضافة التعليق');
 });
-
 document.getElementById('closeComment')?.addEventListener('click', () => {
   document.getElementById('commentPanel').classList.remove('open');
 });
 
-// ---------- رفع الفيديو ----------
-document.getElementById('selectVideoBtn')?.addEventListener('click', () => {
-  document.getElementById('videoFile').click();
-});
-
-document.getElementById('videoFile')?.addEventListener('change', (e) => {
-  if (e.target.files.length) {
-    selectedVideoFile = e.target.files[0];
-    if (selectedVideoFile.size > 100 * 1024 * 1024) {
-      showToast("⚠️ حجم الفيديو كبير جداً (الحد الأقصى 100MB)");
-      selectedVideoFile = null;
-      return;
-    }
-    showToast(`✅ تم اختيار: ${selectedVideoFile.name.substring(0, 30)}`);
-  }
-});
-
-document.getElementById('uploadToCloudinaryBtn')?.remove();
-const uploadBtn = document.createElement('button');
-uploadBtn.className = 'upload-btn';
-uploadBtn.id = 'uploadToCloudinaryBtn';
-uploadBtn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> رفع إلى السحابة';
-uploadBtn.style.background = '#20d5ec';
-document.querySelector('.upload-area').appendChild(uploadBtn);
-
-uploadBtn.addEventListener('click', async () => {
-  if (!selectedVideoFile) {
-    showToast("📹 الرجاء اختيار فيديو أولاً");
-    return;
-  }
-  
-  const caption = document.getElementById('videoCaption').value.trim() || "فيديو جديد على Tokixx";
-  const formData = new FormData();
-  formData.append('file', selectedVideoFile);
-  formData.append('upload_preset', UPLOAD_PRESET);
-  formData.append('resource_type', 'video');
-  
-  uploadBtn.disabled = true;
-  uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الرفع...';
-  
-  try {
-    const response = await fetch(CLOUDINARY_UPLOAD_URL, {
-      method: 'POST',
-      body: formData
-    });
-    const data = await response.json();
-    
-    if (data.secure_url) {
-      const newVideoRef = push(ref(database, 'videos'));
-      await set(newVideoRef, {
-        videoUrl: data.secure_url,
-        caption: caption,
-        username: currentUsername,
-        userId: currentUserId,
-        userAvatar: `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(currentUsername)}`,
-        timestamp: Date.now(),
-        likes: {},
-        commentCount: 0,
-        sound: "🎵 صوت جديد"
+// الدردشة
+function loadChatUsers() {
+  const usersRef = ref(database, 'users');
+  onValue(usersRef, (snapshot) => {
+    allUsers = [];
+    const users = snapshot.val();
+    if (users) {
+      Object.entries(users).forEach(([uid, user]) => {
+        if (uid !== currentUserId) {
+          allUsers.push({ uid, ...user });
+        }
       });
-      
-      showToast("🎉 تم رفع الفيديو بنجاح!");
-      document.getElementById('videoCaption').value = '';
-      document.getElementById('videoFile').value = '';
-      selectedVideoFile = null;
-      switchView('home');
-    } else {
-      showToast("❌ فشل الرفع إلى السحابة");
-    }
-  } catch (err) {
-    console.error(err);
-    showToast("⚠️ حدث خطأ أثناء الرفع");
-  } finally {
-    uploadBtn.disabled = false;
-    uploadBtn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> رفع إلى السحابة';
-  }
-});
-
-// ---------- إحصائيات الملف الشخصي ----------
-async function updateProfileStats() {
-  const videosRef = ref(database, 'videos');
-  const snapshot = await get(videosRef);
-  const videos = snapshot.val();
-  if (!videos) {
-    document.getElementById('postCount').innerText = '0';
-    document.getElementById('totalLikes').innerText = '0';
-    document.getElementById('profileGrid').innerHTML = '<div style="color:white; text-align:center; grid-column:span 3;">لا توجد فيديوهات بعد</div>';
-    return;
-  }
-  
-  let userVideos = 0;
-  let totalLikes = 0;
-  const userVideoList = [];
-  
-  Object.entries(videos).forEach(([id, vid]) => {
-    if (vid.userId === currentUserId) {
-      userVideos++;
-      const likesCount = vid.likes ? Object.keys(vid.likes).length : 0;
-      totalLikes += likesCount;
-      userVideoList.push({ id, ...vid, likesCount });
+      renderChatUsers();
     }
   });
-  
-  document.getElementById('postCount').innerText = userVideos;
-  document.getElementById('totalLikes').innerText = totalLikes;
-  document.getElementById('followersCount').innerText = Math.floor(Math.random() * 1000);
-  
-  const grid = document.getElementById('profileGrid');
-  grid.innerHTML = '';
-  
-  if (userVideos === 0) {
-    grid.innerHTML = '<div style="color:white; text-align:center; grid-column:span 3; padding:40px;"><i class="fas fa-video"></i> لا توجد فيديوهات بعد<br><span style="font-size:12px;">انقر على + لرفع أول فيديو</span></div>';
-  } else {
-    userVideoList.forEach(video => {
-      const item = document.createElement('div');
-      item.className = 'grid-item';
-      item.style.backgroundImage = `url(${video.videoUrl})`;
-      item.style.backgroundSize = 'cover';
-      item.innerHTML = `<div class="view-count-badge"><i class="fas fa-heart"></i> ${video.likesCount}</div>`;
-      item.onclick = () => {
-        const videoIndex = allVideos.findIndex(v => v.id === video.id);
-        if (videoIndex !== -1) {
-          switchView('home');
-          setTimeout(() => {
-            const feedContainer = document.getElementById('feedContainer');
-            const videoElements = feedContainer.querySelectorAll('.video-item');
-            if (videoElements[videoIndex]) {
-              videoElements[videoIndex].scrollIntoView({ behavior: 'smooth' });
-            }
-          }, 100);
-        }
-      };
-      grid.appendChild(item);
+}
+function renderChatUsers() {
+  const container = document.getElementById('chatUsersList');
+  container.innerHTML = '<div style="color:#aaa; padding:5px;">المستخدمين المتاحين</div>';
+  allUsers.forEach(user => {
+    container.innerHTML += `
+      <div class="chat-user" onclick="window.selectChatUser('${user.uid}', '${user.username}')">
+        <img src="${user.avatar}">
+        <span style="color:white; font-size:12px;">${user.username}</span>
+      </div>
+    `;
+  });
+}
+window.selectChatUser = (userId, username) => {
+  currentChatWith = { id: userId, username };
+  loadMessages(userId);
+};
+function loadMessages(otherUserId) {
+  const messagesRef = ref(database, `messages/${currentUserId}_${otherUserId}`);
+  onValue(messagesRef, (snapshot) => {
+    const messages = snapshot.val();
+    const container = document.getElementById('chatMessagesArea');
+    container.innerHTML = '';
+    if (messages) {
+      Object.values(messages).forEach(msg => {
+        const bubble = document.createElement('div');
+        bubble.className = `chat-bubble ${msg.senderId === currentUserId ? 'sent' : 'received'}`;
+        if (msg.text) bubble.innerText = msg.text;
+        if (msg.imageUrl) bubble.innerHTML += `<img src="${msg.imageUrl}">`;
+        container.appendChild(bubble);
+      });
+      container.scrollTop = container.scrollHeight;
+    }
+  });
+}
+document.getElementById('chatSendBtn')?.addEventListener('click', async () => {
+  const input = document.getElementById('chatMessageInput');
+  if (!input.value.trim() || !currentChatWith) return;
+  await push(ref(database, `messages/${currentUserId}_${currentChatWith.id}`), {
+    text: input.value,
+    senderId: currentUserId,
+    senderName: currentUsername,
+    timestamp: serverTimestamp()
+  });
+  input.value = '';
+});
+document.getElementById('chatImageBtn')?.addEventListener('click', () => {
+  document.getElementById('chatImageInput').click();
+});
+document.getElementById('chatImageInput')?.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file || !currentChatWith) return;
+  const imageRef = storageRef(storage, `chat_images/${Date.now()}_${file.name}`);
+  await uploadBytes(imageRef, file);
+  const imageUrl = await getDownloadURL(imageRef);
+  await push(ref(database, `messages/${currentUserId}_${currentChatWith.id}`), {
+    imageUrl: imageUrl,
+    senderId: currentUserId,
+    senderName: currentUsername,
+    timestamp: serverTimestamp()
+  });
+  showToast('✅ تم إرسال الصورة');
+});
+
+// إدارة الجلسة
+function initAuthUI() {
+  const authModal = document.getElementById('authModal');
+  const tabs = document.querySelectorAll('.auth-tab');
+  const loginForm = document.getElementById('loginForm');
+  const registerForm = document.getElementById('registerForm');
+  const loginBtn = document.getElementById('loginBtn');
+  const registerBtn = document.getElementById('registerBtn');
+  const logoutBtn = document.getElementById('logoutBtn');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      if (tab.dataset.tab === 'login') {
+        loginForm.classList.remove('hidden');
+        registerForm.classList.add('hidden');
+      } else {
+        loginForm.classList.add('hidden');
+        registerForm.classList.remove('hidden');
+      }
     });
-  }
+  });
+
+  loginBtn.addEventListener('click', async () => {
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const msgDiv = document.getElementById('loginMessage');
+    if (!email || !password) {
+      msgDiv.innerText = 'الرجاء إدخال البريد وكلمة المرور';
+      return;
+    }
+    try {
+      const userCred = await signInWithEmailAndPassword(auth, email, password);
+      msgDiv.innerText = 'تم تسجيل الدخول بنجاح';
+      setTimeout(() => {
+        authModal.classList.add('hide');
+        loadUserData(userCred.user);
+      }, 500);
+    } catch (error) {
+      msgDiv.innerText = 'فشل الدخول: ' + error.message;
+    }
+  });
+
+  registerBtn.addEventListener('click', async () => {
+    const username = document.getElementById('regUsername').value.trim();
+    const email = document.getElementById('regEmail').value.trim();
+    const password = document.getElementById('regPassword').value;
+    const msgDiv = document.getElementById('registerMessage');
+    if (!username || !email || !password) {
+      msgDiv.innerText = 'الرجاء ملء جميع الحقول';
+      return;
+    }
+    try {
+      const userCred = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = userCred.user.uid;
+      await set(ref(database, `users/${uid}`), {
+        username: username,
+        email: email,
+        avatar: `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(username)}`,
+        createdAt: serverTimestamp()
+      });
+      msgDiv.innerText = 'تم إنشاء الحساب بنجاح';
+      setTimeout(() => {
+        authModal.classList.add('hide');
+        loadUserData(userCred.user);
+      }, 500);
+    } catch (error) {
+      msgDiv.innerText = 'فشل التسجيل: ' + error.message;
+    }
+  });
+
+  logoutBtn.addEventListener('click', async () => {
+    await signOut(auth);
+    authModal.classList.remove('hide');
+    document.getElementById('homeView').classList.remove('active');
+    document.getElementById('profileView').classList.remove('active');
+    document.getElementById('chatView').classList.remove('active');
+    document.getElementById('homeView').classList.add('active');
+    document.querySelectorAll('.nav-icon').forEach(icon => icon.classList.remove('active'));
+    document.querySelector('.nav-icon[data-nav="home"]').classList.add('active');
+    showToast('تم تسجيل الخروج');
+  });
 }
 
-// ---------- نظام التنقل ----------
+async function loadUserData(user) {
+  currentUser = user;
+  currentUserId = user.uid;
+  const userRef = ref(database, `users/${currentUserId}`);
+  const snapshot = await get(userRef);
+  if (snapshot.exists()) {
+    currentUsername = snapshot.val().username;
+    document.getElementById('profileUsername').innerText = currentUsername;
+    if (user.email === ADMIN_EMAIL) {
+      isAdmin = true;
+      document.getElementById('adminIcon').style.display = 'flex';
+    } else {
+      isAdmin = false;
+      document.getElementById('adminIcon').style.display = 'none';
+    }
+  } else {
+    // إذا لم يكن هناك بيانات (مستخدم قديم) نطلب اسم مستخدم
+    const username = prompt('أدخل اسم المستخدم الخاص بك:');
+    if (username) {
+      await set(userRef, {
+        username: username,
+        email: user.email,
+        avatar: `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(username)}`,
+        createdAt: serverTimestamp()
+      });
+      currentUsername = username;
+      document.getElementById('profileUsername').innerText = username;
+    }
+  }
+  loadVideos();
+  loadChatUsers();
+  // عرض الفيديو الأول بعد تحميل البيانات
+  switchView('home');
+}
+
+function loadVideos() {
+  const videosRef = ref(database, 'videos');
+  onValue(videosRef, (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+      allVideos = Object.entries(data).map(([id, video]) => ({ id, ...video }));
+      allVideos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      renderFeed(allVideos);
+    } else {
+      renderFeed([]);
+    }
+  });
+}
+
 function switchView(viewId) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById(viewId + 'View').classList.add('active');
   document.querySelectorAll('.nav-icon').forEach(icon => icon.classList.remove('active'));
-  const activeNav = document.querySelector(`.nav-icon[data-nav="${viewId}"]`);
-  if (activeNav) activeNav.classList.add('active');
-  if (viewId === 'profile') updateProfileStats();
-  if (viewId === 'inbox') loadInbox();
+  document.querySelector(`.nav-icon[data-nav="${viewId}"]`).classList.add('active');
+  if (viewId === 'chat') {
+    loadChatUsers();
+  }
+  if (viewId === 'profile') {
+    updateProfileGrid();
+  }
 }
 
-document.querySelectorAll('.nav-icon').forEach(icon => {
-  icon.addEventListener('click', () => {
-    const nav = icon.getAttribute('data-nav');
-    switchView(nav);
-  });
-});
-
-// صندوق الوارد
-function loadInbox() {
-  const inboxDiv = document.getElementById('inboxContainer');
-  inboxDiv.innerHTML = `
-    <div class="conversation-row" onclick="showToast('قريباً ستدعم المحادثات المباشرة')">
-      <div class="conv-avatar"><img src="https://randomuser.me/api/portraits/men/1.jpg"></div>
-      <div class="conv-details"><div class="conv-name">🤖 فريق Tokixx</div><div class="conv-preview">مرحباً! شارك الفيديوهات مع أصدقائك 🎬</div></div>
-    </div>
-    <div class="conversation-row" onclick="showToast('يمكنك دعوة الأصدقاء للمشاركة')">
-      <div class="conv-avatar"><img src="https://randomuser.me/api/portraits/women/2.jpg"></div>
-      <div class="conv-details"><div class="conv-name">✨ دعوة الأصدقاء</div><div class="conv-preview">انقر هنا لدعوة أصدقائك إلى Tokixx</div></div>
-    </div>
-  `;
+async function updateProfileGrid() {
+  const videosRef = ref(database, 'videos');
+  const snapshot = await get(videosRef);
+  const videos = snapshot.val();
+  const grid = document.getElementById('profileGrid');
+  grid.innerHTML = '';
+  if (videos) {
+    Object.entries(videos).forEach(([id, video]) => {
+      if (video.userId === currentUserId) {
+        const item = document.createElement('div');
+        item.className = 'grid-item';
+        item.style.backgroundImage = `url(${video.videoUrl})`;
+        item.style.backgroundSize = 'cover';
+        item.innerHTML = `<div class="view-count-badge"><i class="fas fa-heart"></i> ${video.likes ? Object.keys(video.likes).length : 0}</div>`;
+        item.onclick = () => {
+          const idx = allVideos.findIndex(v => v.id === id);
+          if (idx !== -1) {
+            switchView('home');
+            setTimeout(() => {
+              const feed = document.getElementById('feedContainer');
+              const items = feed.querySelectorAll('.video-item');
+              if (items[idx]) items[idx].scrollIntoView({ behavior: 'smooth' });
+            }, 100);
+          }
+        };
+        grid.appendChild(item);
+      }
+    });
+  }
+  if (grid.children.length === 0) {
+    grid.innerHTML = '<div style="color:white; text-align:center; grid-column:span 3;">لا توجد فيديوهات بعد</div>';
+  }
 }
 
-// أحداث إضافية
-document.getElementById('editProfileBtn')?.addEventListener('click', () => {
-  const newName = prompt("تعديل اسم المستخدم:", currentUsername);
+document.getElementById('editProfileBtn')?.addEventListener('click', async () => {
+  const newName = prompt('تعديل اسم المستخدم:', currentUsername);
   if (newName && newName.trim()) {
     currentUsername = newName.trim();
-    localStorage.setItem("username", currentUsername);
-    update(ref(database, `users/${currentUserId}`), { username: currentUsername });
-    document.getElementById("profileUsername").innerText = currentUsername;
-    showToast("✅ تم تحديث اسم المستخدم");
+    await update(ref(database, `users/${currentUserId}`), { username: currentUsername });
+    document.getElementById('profileUsername').innerText = currentUsername;
+    showToast('✅ تم تحديث الاسم');
   }
 });
 
-document.getElementById('addFriendBtn')?.addEventListener('click', () => {
-  showToast("👥 شارك رابط حسابك مع الأصدقاء!");
-  navigator.clipboard.writeText(window.location.href);
+document.getElementById('adminIcon')?.addEventListener('click', () => {
+  if (isAdmin) showAdminPanel();
+});
+document.getElementById('closeAdmin')?.addEventListener('click', () => {
+  document.getElementById('adminPanel').classList.remove('show');
 });
 
-// تهيئة التطبيق
-async function init() {
-  await initUser();
-  loadVideosFromFirebase();
-}
+document.querySelectorAll('.nav-icon').forEach(icon => {
+  icon.addEventListener('click', () => {
+    switchView(icon.getAttribute('data-nav'));
+  });
+});
 
-init();
+// بدء التطبيق
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    document.getElementById('authModal').classList.add('hide');
+    loadUserData(user);
+  } else {
+    document.getElementById('authModal').classList.remove('hide');
+  }
+});
+initAuthUI();
