@@ -1,8 +1,10 @@
 import { database, auth, storage, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, storageRef, uploadBytes, getDownloadURL } from './firebase-config.js';
 import { ref, push, onValue, set, update, get, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.2/firebase-database.js";
 
-// بيانات المشرف
+// Admin credentials
 const ADMIN_EMAIL = "jasim28v@gmail.com";
+
+// Global variables
 let currentUser = null;
 let currentUserId = null;
 let currentUsername = null;
@@ -12,6 +14,7 @@ let currentVideoIdForComment = null;
 let currentChatWith = null;
 let allUsers = [];
 
+// Helper: toast message
 function showToast(msg) {
   const toast = document.getElementById('toastMsg');
   toast.innerText = msg;
@@ -19,12 +22,7 @@ function showToast(msg) {
   setTimeout(() => { toast.style.opacity = '0'; }, 2000);
 }
 
-// التحقق من المشرف
-function checkAdmin(email) {
-  return email === ADMIN_EMAIL;
-}
-
-// عرض لوحة التحكم
+// Admin panel functions
 function showAdminPanel() {
   const panel = document.getElementById('adminPanel');
   const content = document.getElementById('adminContent');
@@ -77,11 +75,11 @@ window.deleteVideo = async (videoId) => {
   }
 };
 
-// عرض الفيديوهات
+// Video rendering with watermark and hashtags
 function renderFeed(videos) {
   const container = document.getElementById('feedContainer');
   if (!videos.length) {
-    container.innerHTML = '<div class="loading">لا توجد فيديوهات</div>';
+    container.innerHTML = '<div class="loading">لا توجد فيديوهات حالياً</div>';
     return;
   }
   container.innerHTML = '';
@@ -95,7 +93,7 @@ function renderFeed(videos) {
     videoDiv.innerHTML = `
       <video class="video-element" src="${video.videoUrl}" loop muted playsinline autoplay></video>
       <div class="floating-right">
-        <div class="action-btn avatar-ring"><img src="${video.userAvatar || 'https://ui-avatars.com/api/?background=ff0050&color=fff&name=' + encodeURIComponent(video.username)}"></div>
+        <div class="action-btn avatar-ring"><img src="${video.userAvatar || `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(video.username)}`}"></div>
         <div class="action-btn like-btn" data-id="${video.id}"><i class="${isLiked ? 'fas' : 'far'} fa-heart"></i><span class="like-count">${likesCount}</span></div>
         <div class="action-btn comment-open-btn" data-id="${video.id}"><i class="far fa-comment-dots"></i><span>${video.commentCount || 0}</span></div>
         <div class="action-btn share-btn" data-url="${video.videoUrl}"><i class="fas fa-share"></i><span>شارك</span></div>
@@ -107,6 +105,7 @@ function renderFeed(videos) {
       </div>
     `;
     container.appendChild(videoDiv);
+    // Add watermark
     setTimeout(() => {
       const watermark = document.createElement('div');
       watermark.className = 'watermark';
@@ -127,11 +126,13 @@ function attachVideoEvents() {
       if (snapshot.exists()) {
         await remove(likeRef);
         btn.querySelector('i').classList.replace('fas', 'far');
-        btn.querySelector('.like-count').innerText = parseInt(btn.querySelector('.like-count').innerText) - 1;
+        const countSpan = btn.querySelector('.like-count');
+        countSpan.innerText = parseInt(countSpan.innerText) - 1;
       } else {
         await set(likeRef, true);
         btn.querySelector('i').classList.replace('far', 'fas');
-        btn.querySelector('.like-count').innerText = parseInt(btn.querySelector('.like-count').innerText) + 1;
+        const countSpan = btn.querySelector('.like-count');
+        countSpan.innerText = parseInt(countSpan.innerText) + 1;
       }
     };
   });
@@ -185,11 +186,12 @@ document.getElementById('sendCommentBtn')?.addEventListener('click', async () =>
   openCommentPanel(currentVideoIdForComment);
   showToast('✅ تم إضافة التعليق');
 });
+
 document.getElementById('closeComment')?.addEventListener('click', () => {
   document.getElementById('commentPanel').classList.remove('open');
 });
 
-// الدردشة
+// Chat functionality
 function loadChatUsers() {
   const usersRef = ref(database, 'users');
   onValue(usersRef, (snapshot) => {
@@ -205,6 +207,7 @@ function loadChatUsers() {
     }
   });
 }
+
 function renderChatUsers() {
   const container = document.getElementById('chatUsersList');
   container.innerHTML = '<div style="color:#aaa; padding:5px;">المستخدمين المتاحين</div>';
@@ -217,10 +220,12 @@ function renderChatUsers() {
     `;
   });
 }
+
 window.selectChatUser = (userId, username) => {
   currentChatWith = { id: userId, username };
   loadMessages(userId);
 };
+
 function loadMessages(otherUserId) {
   const messagesRef = ref(database, `messages/${currentUserId}_${otherUserId}`);
   onValue(messagesRef, (snapshot) => {
@@ -239,6 +244,7 @@ function loadMessages(otherUserId) {
     }
   });
 }
+
 document.getElementById('chatSendBtn')?.addEventListener('click', async () => {
   const input = document.getElementById('chatMessageInput');
   if (!input.value.trim() || !currentChatWith) return;
@@ -250,9 +256,11 @@ document.getElementById('chatSendBtn')?.addEventListener('click', async () => {
   });
   input.value = '';
 });
+
 document.getElementById('chatImageBtn')?.addEventListener('click', () => {
   document.getElementById('chatImageInput').click();
 });
+
 document.getElementById('chatImageInput')?.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file || !currentChatWith) return;
@@ -268,15 +276,115 @@ document.getElementById('chatImageInput')?.addEventListener('change', async (e) 
   showToast('✅ تم إرسال الصورة');
 });
 
-// إدارة الجلسة
+// Profile grid (user videos)
+async function updateProfileGrid() {
+  const videosRef = ref(database, 'videos');
+  const snapshot = await get(videosRef);
+  const videos = snapshot.val();
+  const grid = document.getElementById('profileGrid');
+  grid.innerHTML = '';
+  if (videos) {
+    Object.entries(videos).forEach(([id, video]) => {
+      if (video.userId === currentUserId) {
+        const likesCount = video.likes ? Object.keys(video.likes).length : 0;
+        const item = document.createElement('div');
+        item.className = 'grid-item';
+        item.style.backgroundImage = `url(${video.videoUrl})`;
+        item.style.backgroundSize = 'cover';
+        item.innerHTML = `<div class="view-count-badge"><i class="fas fa-heart"></i> ${likesCount}</div>`;
+        item.onclick = () => {
+          const idx = allVideos.findIndex(v => v.id === id);
+          if (idx !== -1) {
+            switchView('home');
+            setTimeout(() => {
+              const feed = document.getElementById('feedContainer');
+              const items = feed.querySelectorAll('.video-item');
+              if (items[idx]) items[idx].scrollIntoView({ behavior: 'smooth' });
+            }, 100);
+          }
+        };
+        grid.appendChild(item);
+      }
+    });
+  }
+  if (grid.children.length === 0) {
+    grid.innerHTML = '<div style="color:white; text-align:center; grid-column:span 3;">لا توجد فيديوهات بعد</div>';
+  }
+}
+
+// Load videos from Firebase
+function loadVideos() {
+  const videosRef = ref(database, 'videos');
+  onValue(videosRef, (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+      allVideos = Object.entries(data).map(([id, video]) => ({ id, ...video }));
+      allVideos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      renderFeed(allVideos);
+    } else {
+      renderFeed([]);
+    }
+  });
+}
+
+// Switch views
+function switchView(viewId) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(viewId + 'View').classList.add('active');
+  document.querySelectorAll('.nav-icon').forEach(icon => icon.classList.remove('active'));
+  document.querySelector(`.nav-icon[data-nav="${viewId}"]`).classList.add('active');
+  if (viewId === 'chat') {
+    loadChatUsers();
+  }
+  if (viewId === 'profile') {
+    updateProfileGrid();
+  }
+}
+
+// Load user data after authentication
+async function loadUserData(user) {
+  currentUser = user;
+  currentUserId = user.uid;
+  const userRef = ref(database, `users/${currentUserId}`);
+  const snapshot = await get(userRef);
+  if (snapshot.exists()) {
+    currentUsername = snapshot.val().username;
+    document.getElementById('profileUsername').innerText = currentUsername;
+    if (user.email === ADMIN_EMAIL) {
+      isAdmin = true;
+      document.getElementById('adminIcon').style.display = 'flex';
+    } else {
+      isAdmin = false;
+      document.getElementById('adminIcon').style.display = 'none';
+    }
+  } else {
+    // Should not happen because we create user on registration, but just in case
+    const username = prompt('أدخل اسم المستخدم الخاص بك:');
+    if (username) {
+      await set(userRef, {
+        username: username,
+        email: user.email,
+        avatar: `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(username)}`,
+        createdAt: serverTimestamp()
+      });
+      currentUsername = username;
+      document.getElementById('profileUsername').innerText = username;
+    }
+  }
+  loadVideos();
+  loadChatUsers();
+  switchView('home');
+}
+
+// Auth UI initialization
 function initAuthUI() {
   const authModal = document.getElementById('authModal');
-  const tabs = document.querySelectorAll('.auth-tab');
   const loginForm = document.getElementById('loginForm');
   const registerForm = document.getElementById('registerForm');
   const loginBtn = document.getElementById('loginBtn');
   const registerBtn = document.getElementById('registerBtn');
   const logoutBtn = document.getElementById('logoutBtn');
+  const tabs = document.querySelectorAll('.auth-tab');
 
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
@@ -343,6 +451,7 @@ function initAuthUI() {
   logoutBtn.addEventListener('click', async () => {
     await signOut(auth);
     authModal.classList.remove('hide');
+    // Reset UI
     document.getElementById('homeView').classList.remove('active');
     document.getElementById('profileView').classList.remove('active');
     document.getElementById('chatView').classList.remove('active');
@@ -353,102 +462,7 @@ function initAuthUI() {
   });
 }
 
-async function loadUserData(user) {
-  currentUser = user;
-  currentUserId = user.uid;
-  const userRef = ref(database, `users/${currentUserId}`);
-  const snapshot = await get(userRef);
-  if (snapshot.exists()) {
-    currentUsername = snapshot.val().username;
-    document.getElementById('profileUsername').innerText = currentUsername;
-    if (user.email === ADMIN_EMAIL) {
-      isAdmin = true;
-      document.getElementById('adminIcon').style.display = 'flex';
-    } else {
-      isAdmin = false;
-      document.getElementById('adminIcon').style.display = 'none';
-    }
-  } else {
-    // إذا لم يكن هناك بيانات (مستخدم قديم) نطلب اسم مستخدم
-    const username = prompt('أدخل اسم المستخدم الخاص بك:');
-    if (username) {
-      await set(userRef, {
-        username: username,
-        email: user.email,
-        avatar: `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(username)}`,
-        createdAt: serverTimestamp()
-      });
-      currentUsername = username;
-      document.getElementById('profileUsername').innerText = username;
-    }
-  }
-  loadVideos();
-  loadChatUsers();
-  // عرض الفيديو الأول بعد تحميل البيانات
-  switchView('home');
-}
-
-function loadVideos() {
-  const videosRef = ref(database, 'videos');
-  onValue(videosRef, (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-      allVideos = Object.entries(data).map(([id, video]) => ({ id, ...video }));
-      allVideos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      renderFeed(allVideos);
-    } else {
-      renderFeed([]);
-    }
-  });
-}
-
-function switchView(viewId) {
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.getElementById(viewId + 'View').classList.add('active');
-  document.querySelectorAll('.nav-icon').forEach(icon => icon.classList.remove('active'));
-  document.querySelector(`.nav-icon[data-nav="${viewId}"]`).classList.add('active');
-  if (viewId === 'chat') {
-    loadChatUsers();
-  }
-  if (viewId === 'profile') {
-    updateProfileGrid();
-  }
-}
-
-async function updateProfileGrid() {
-  const videosRef = ref(database, 'videos');
-  const snapshot = await get(videosRef);
-  const videos = snapshot.val();
-  const grid = document.getElementById('profileGrid');
-  grid.innerHTML = '';
-  if (videos) {
-    Object.entries(videos).forEach(([id, video]) => {
-      if (video.userId === currentUserId) {
-        const item = document.createElement('div');
-        item.className = 'grid-item';
-        item.style.backgroundImage = `url(${video.videoUrl})`;
-        item.style.backgroundSize = 'cover';
-        item.innerHTML = `<div class="view-count-badge"><i class="fas fa-heart"></i> ${video.likes ? Object.keys(video.likes).length : 0}</div>`;
-        item.onclick = () => {
-          const idx = allVideos.findIndex(v => v.id === id);
-          if (idx !== -1) {
-            switchView('home');
-            setTimeout(() => {
-              const feed = document.getElementById('feedContainer');
-              const items = feed.querySelectorAll('.video-item');
-              if (items[idx]) items[idx].scrollIntoView({ behavior: 'smooth' });
-            }, 100);
-          }
-        };
-        grid.appendChild(item);
-      }
-    });
-  }
-  if (grid.children.length === 0) {
-    grid.innerHTML = '<div style="color:white; text-align:center; grid-column:span 3;">لا توجد فيديوهات بعد</div>';
-  }
-}
-
+// Edit profile
 document.getElementById('editProfileBtn')?.addEventListener('click', async () => {
   const newName = prompt('تعديل اسم المستخدم:', currentUsername);
   if (newName && newName.trim()) {
@@ -459,6 +473,7 @@ document.getElementById('editProfileBtn')?.addEventListener('click', async () =>
   }
 });
 
+// Admin icon click
 document.getElementById('adminIcon')?.addEventListener('click', () => {
   if (isAdmin) showAdminPanel();
 });
@@ -466,13 +481,14 @@ document.getElementById('closeAdmin')?.addEventListener('click', () => {
   document.getElementById('adminPanel').classList.remove('show');
 });
 
+// Navigation
 document.querySelectorAll('.nav-icon').forEach(icon => {
   icon.addEventListener('click', () => {
     switchView(icon.getAttribute('data-nav'));
   });
 });
 
-// بدء التطبيق
+// Start app: listen to auth state
 onAuthStateChanged(auth, (user) => {
   if (user) {
     document.getElementById('authModal').classList.add('hide');
@@ -481,4 +497,5 @@ onAuthStateChanged(auth, (user) => {
     document.getElementById('authModal').classList.remove('hide');
   }
 });
+
 initAuthUI();
