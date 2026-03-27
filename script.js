@@ -1,501 +1,419 @@
-import { database, auth, storage, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, storageRef, uploadBytes, getDownloadURL } from './firebase-config.js';
-import { ref, push, onValue, set, update, get, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.2/firebase-database.js";
+// script.js
+import { auth, db, storage } from './firebase-config.js';
+import { 
+  signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, onAuthStateChanged, signOut 
+} from "firebase/auth";
+import { 
+  collection, addDoc, getDocs, query, orderBy, limit, where, 
+  doc, getDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot,
+  serverTimestamp, Timestamp, setDoc, deleteDoc
+} from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-// Admin credentials
-const ADMIN_EMAIL = "jasim28v@gmail.com";
+// ------------------- DOM Elements -------------------
+const feedContainer = document.getElementById('feedContainer');
+const friendsFeedContainer = document.getElementById('friendsFeedContainer');
+const profilePage = document.getElementById('profilePage');
+const inboxContent = document.getElementById('inboxContent');
+const modalOverlay = document.getElementById('modalOverlay');
+const authSheet = document.getElementById('authSheet');
+const uploadModal = document.getElementById('uploadModal');
+const searchModal = document.getElementById('searchModal');
+const commentsModal = document.getElementById('commentsModal');
+const openSearchBtn = document.getElementById('openSearchBtn');
+const liveIconBtn = document.getElementById('liveIconBtn');
+const videoFileInput = document.getElementById('videoFile');
+const uploadArea = document.getElementById('uploadArea');
+const submitUpload = document.getElementById('submitUpload');
+const videoCaption = document.getElementById('videoCaption');
+const searchInput = document.getElementById('searchInput');
+const searchResultsDiv = document.getElementById('searchResults');
+const newCommentInput = document.getElementById('newComment');
+const postCommentBtn = document.getElementById('postCommentBtn');
 
-// Global variables
 let currentUser = null;
-let currentUserId = null;
-let currentUsername = null;
-let isAdmin = false;
-let allVideos = [];
-let currentVideoIdForComment = null;
-let currentChatWith = null;
-let allUsers = [];
+let currentFeed = 'forYou';
+let activeVideoId = null;
+let currentProfileUserId = null;
 
-// Helper: toast message
-function showToast(msg) {
-  const toast = document.getElementById('toastMsg');
-  toast.innerText = msg;
-  toast.style.opacity = '1';
-  setTimeout(() => { toast.style.opacity = '0'; }, 2000);
-}
+// ------------------- Auth UI -------------------
+const showModal = (modal) => {
+  modal.classList.add('open');
+  modalOverlay.style.display = 'block';
+};
+const hideModals = () => {
+  document.querySelectorAll('.modal-sheet').forEach(m => m.classList.remove('open'));
+  modalOverlay.style.display = 'none';
+};
+modalOverlay.addEventListener('click', hideModals);
 
-// Admin panel functions
-function showAdminPanel() {
-  const panel = document.getElementById('adminPanel');
-  const content = document.getElementById('adminContent');
-  const usersRef = ref(database, 'users');
-  onValue(usersRef, (snapshot) => {
-    const users = snapshot.val();
-    content.innerHTML = '<h3 style="color:white; padding:10px;">👥 المستخدمين</h3>';
-    if (users) {
-      Object.entries(users).forEach(([uid, user]) => {
-        content.innerHTML += `
-          <div class="admin-item">
-            <span>👤 ${user.username} (${user.email || 'لا يوجد بريد'})</span>
-            <div>
-              <button class="ban-btn" onclick="window.banUser('${uid}')"><i class="fas fa-ban"></i> حظر</button>
-            </div>
-          </div>
-        `;
-      });
+document.getElementById('googleSignIn').onclick = async () => {
+  const provider = new GoogleAuthProvider();
+  try {
+    await signInWithPopup(auth, provider);
+    hideModals();
+  } catch (err) { alert(err.message); }
+};
+document.getElementById('emailAuthBtn').onclick = () => {
+  document.getElementById('emailForm').style.display = 'block';
+};
+let isLoginMode = true;
+document.getElementById('toggleAuthMode').onclick = () => {
+  isLoginMode = !isLoginMode;
+  document.getElementById('toggleAuthMode').innerText = isLoginMode ? "Create new account" : "Already have account? Sign in";
+  document.getElementById('submitAuthBtn').innerText = isLoginMode ? "Sign In" : "Sign Up";
+};
+document.getElementById('submitAuthBtn').onclick = async () => {
+  const email = document.getElementById('authEmail').value;
+  const pwd = document.getElementById('authPassword').value;
+  try {
+    if (isLoginMode) await signInWithEmailAndPassword(auth, email, pwd);
+    else await createUserWithEmailAndPassword(auth, email, pwd);
+    hideModals();
+  } catch (err) { alert(err.message); }
+};
+document.getElementById('skipInterests').onclick = () => hideModals();
+
+// ------------------- Navigation -------------------
+const pages = {
+  home: document.getElementById('homePage'),
+  friends: document.getElementById('friendsPage'),
+  inbox: document.getElementById('inboxPage'),
+  profile: document.getElementById('profilePage')
+};
+const navItems = document.querySelectorAll('.nav-item');
+const setActivePage = (pageId) => {
+  Object.keys(pages).forEach(p => pages[p].classList.remove('active-page'));
+  pages[pageId].classList.add('active-page');
+  navItems.forEach(item => item.classList.remove('active'));
+  document.querySelector(`[data-nav="${pageId}"]`).classList.add('active');
+  if (pageId === 'profile') loadProfile(currentUser?.uid);
+  if (pageId === 'inbox') loadInbox();
+  if (pageId === 'home' || pageId === 'friends') loadFeed();
+};
+navItems.forEach(item => {
+  item.addEventListener('click', () => {
+    const nav = item.getAttribute('data-nav');
+    if (nav === 'plus') {
+      if (!currentUser) { showModal(authSheet); return; }
+      showModal(uploadModal);
+      return;
     }
-    content.innerHTML += '<h3 style="color:white; padding:10px;">🎬 الفيديوهات</h3>';
-    const videosRef = ref(database, 'videos');
-    onValue(videosRef, (snapshot) => {
-      const videos = snapshot.val();
-      if (videos) {
-        Object.entries(videos).forEach(([vid, video]) => {
-          content.innerHTML += `
-            <div class="admin-item">
-              <span>🎥 ${video.username}: ${video.caption?.substring(0, 30) || 'بدون وصف'}</span>
-              <button class="delete-btn" onclick="window.deleteVideo('${vid}')"><i class="fas fa-trash"></i> حذف</button>
-            </div>
-          `;
-        });
-      }
-    });
+    setActivePage(nav);
   });
-  panel.classList.add('show');
-}
+});
 
-window.banUser = async (userId) => {
-  if (confirm('هل أنت متأكد من حظر هذا المستخدم؟')) {
-    await set(ref(database, `banned/${userId}`), true);
-    showToast('✅ تم حظر المستخدم');
-  }
-};
-
-window.deleteVideo = async (videoId) => {
-  if (confirm('هل أنت متأكد من حذف هذا الفيديو؟')) {
-    await remove(ref(database, `videos/${videoId}`));
-    showToast('✅ تم حذف الفيديو');
-  }
-};
-
-// Video rendering with watermark and hashtags
-function renderFeed(videos) {
-  const container = document.getElementById('feedContainer');
-  if (!videos.length) {
-    container.innerHTML = '<div class="loading">لا توجد فيديوهات حالياً</div>';
-    return;
-  }
+// ------------------- Feed Loading -------------------
+const loadFeed = async () => {
+  const container = currentFeed === 'forYou' ? feedContainer : friendsFeedContainer;
+  const q = query(collection(db, "videos"), orderBy("timestamp", "desc"), limit(30));
+  const snapshot = await getDocs(q);
   container.innerHTML = '';
-  videos.forEach(video => {
-    const likesCount = video.likes ? Object.keys(video.likes).length : 0;
-    const isLiked = video.likes && video.likes[currentUserId];
-    const hashtags = video.hashtags || [];
-    const videoDiv = document.createElement('div');
-    videoDiv.className = 'video-item';
-    videoDiv.setAttribute('data-vid', video.id);
-    videoDiv.innerHTML = `
-      <video class="video-element" src="${video.videoUrl}" loop muted playsinline autoplay></video>
-      <div class="floating-right">
-        <div class="action-btn avatar-ring"><img src="${video.userAvatar || `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(video.username)}`}"></div>
-        <div class="action-btn like-btn" data-id="${video.id}"><i class="${isLiked ? 'fas' : 'far'} fa-heart"></i><span class="like-count">${likesCount}</span></div>
-        <div class="action-btn comment-open-btn" data-id="${video.id}"><i class="far fa-comment-dots"></i><span>${video.commentCount || 0}</span></div>
-        <div class="action-btn share-btn" data-url="${video.videoUrl}"><i class="fas fa-share"></i><span>شارك</span></div>
-      </div>
-      <div class="video-info">
-        <div class="username">${video.username} <i class="fas fa-check-circle verified-icon"></i></div>
-        <div class="caption">${video.caption || ""}</div>
-        <div class="hashtags">${hashtags.map(t => `<span class="hashtag">#${t}</span>`).join('')}</div>
-      </div>
-    `;
-    container.appendChild(videoDiv);
-    // Add watermark
-    setTimeout(() => {
-      const watermark = document.createElement('div');
-      watermark.className = 'watermark';
-      watermark.innerHTML = `<i class="fas fa-heart"></i> Tokixx | @${video.username}`;
-      videoDiv.appendChild(watermark);
-    }, 100);
-  });
-  attachVideoEvents();
-}
-
-function attachVideoEvents() {
-  document.querySelectorAll('.like-btn').forEach(btn => {
-    btn.onclick = async (e) => {
-      e.stopPropagation();
-      const videoId = btn.getAttribute('data-id');
-      const likeRef = ref(database, `videos/${videoId}/likes/${currentUserId}`);
-      const snapshot = await get(likeRef);
-      if (snapshot.exists()) {
-        await remove(likeRef);
-        btn.querySelector('i').classList.replace('fas', 'far');
-        const countSpan = btn.querySelector('.like-count');
-        countSpan.innerText = parseInt(countSpan.innerText) - 1;
-      } else {
-        await set(likeRef, true);
-        btn.querySelector('i').classList.replace('far', 'fas');
-        const countSpan = btn.querySelector('.like-count');
-        countSpan.innerText = parseInt(countSpan.innerText) + 1;
-      }
-    };
-  });
-  document.querySelectorAll('.comment-open-btn').forEach(btn => {
-    btn.onclick = () => openCommentPanel(btn.getAttribute('data-id'));
-  });
-  document.querySelectorAll('.share-btn').forEach(btn => {
-    btn.onclick = () => {
-      navigator.clipboard.writeText(btn.getAttribute('data-url'));
-      showToast('✅ تم نسخ الرابط');
-    };
-  });
-}
-
-async function openCommentPanel(videoId) {
-  currentVideoIdForComment = videoId;
-  const panel = document.getElementById('commentPanel');
-  const listDiv = document.getElementById('commentList');
-  const commentsRef = ref(database, `comments/${videoId}`);
-  const snapshot = await get(commentsRef);
-  const comments = snapshot.val() ? Object.values(snapshot.val()) : [];
-  listDiv.innerHTML = comments.length ? '' : '<div style="color:#aaa; text-align:center;">لا توجد تعليقات</div>';
-  comments.reverse().forEach(comm => {
-    listDiv.innerHTML += `
-      <div class="comment-item">
-        <img class="comment-avatar" src="${comm.avatar}">
-        <div class="comment-content">
-          <div><span class="comment-name">${comm.username}</span><span class="comment-time"> ${comm.time}</span></div>
-          <div class="comment-text">${comm.text}</div>
-        </div>
-      </div>
-    `;
-  });
-  panel.classList.add('open');
-}
-
-document.getElementById('sendCommentBtn')?.addEventListener('click', async () => {
-  const input = document.getElementById('commentInput');
-  if (!input.value.trim() || !currentVideoIdForComment) return;
-  await push(ref(database, `comments/${currentVideoIdForComment}`), {
-    username: currentUsername,
-    userId: currentUserId,
-    avatar: `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(currentUsername)}`,
-    text: input.value,
-    time: new Date().toLocaleString('ar'),
-  });
-  const videoRef = ref(database, `videos/${currentVideoIdForComment}/commentCount`);
-  const count = (await get(videoRef)).val() || 0;
-  await set(videoRef, count + 1);
-  input.value = '';
-  openCommentPanel(currentVideoIdForComment);
-  showToast('✅ تم إضافة التعليق');
-});
-
-document.getElementById('closeComment')?.addEventListener('click', () => {
-  document.getElementById('commentPanel').classList.remove('open');
-});
-
-// Chat functionality
-function loadChatUsers() {
-  const usersRef = ref(database, 'users');
-  onValue(usersRef, (snapshot) => {
-    allUsers = [];
-    const users = snapshot.val();
-    if (users) {
-      Object.entries(users).forEach(([uid, user]) => {
-        if (uid !== currentUserId) {
-          allUsers.push({ uid, ...user });
-        }
-      });
-      renderChatUsers();
+  for (const docSnap of snapshot.docs) {
+    const vid = { id: docSnap.id, ...docSnap.data() };
+    if (currentFeed === 'following' && currentUser && !vid.followersOnly) {
+      // simple: check if user follows video author
+      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+      const following = userDoc.data()?.following || [];
+      if (!following.includes(vid.userId)) continue;
     }
-  });
-}
-
-function renderChatUsers() {
-  const container = document.getElementById('chatUsersList');
-  container.innerHTML = '<div style="color:#aaa; padding:5px;">المستخدمين المتاحين</div>';
-  allUsers.forEach(user => {
-    container.innerHTML += `
-      <div class="chat-user" onclick="window.selectChatUser('${user.uid}', '${user.username}')">
-        <img src="${user.avatar}">
-        <span style="color:white; font-size:12px;">${user.username}</span>
+    renderVideoCard(container, vid);
+  }
+  // attach play observers
+  attachVideoScroll();
+};
+const renderVideoCard = (container, video) => {
+  const card = document.createElement('div');
+  card.className = 'video-card';
+  card.innerHTML = `
+    <video src="${video.videoUrl}" poster="${video.thumbnailUrl || ''}" loop muted playsinline></video>
+    <div class="video-overlay">
+      <div class="video-info">
+        <div class="video-username" data-userid="${video.userId}">@${video.username || 'user'}</div>
+        <div class="video-caption">${video.caption || ''}</div>
       </div>
-    `;
+      <div class="video-actions">
+        <div class="action-btn like-btn" data-vid="${video.id}"><i class="far fa-heart"></i><span>${video.likes || 0}</span></div>
+        <div class="action-btn comment-btn" data-vid="${video.id}"><i class="far fa-comment"></i><span>${video.commentsCount || 0}</span></div>
+        <div class="action-btn share-btn"><i class="fas fa-share"></i><span>Share</span></div>
+      </div>
+    </div>
+  `;
+  container.appendChild(card);
+  // like logic
+  card.querySelector('.like-btn').addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (!currentUser) { showModal(authSheet); return; }
+    const vidId = card.querySelector('.like-btn').dataset.vid;
+    const vidRef = doc(db, "videos", vidId);
+    const vidSnap = await getDoc(vidRef);
+    const likes = vidSnap.data().likes || 0;
+    const likedBy = vidSnap.data().likedBy || [];
+    if (likedBy.includes(currentUser.uid)) {
+      await updateDoc(vidRef, { likes: likes-1, likedBy: arrayRemove(currentUser.uid) });
+    } else {
+      await updateDoc(vidRef, { likes: likes+1, likedBy: arrayUnion(currentUser.uid) });
+    }
+    loadFeed(); // refresh
   });
-}
-
-window.selectChatUser = (userId, username) => {
-  currentChatWith = { id: userId, username };
-  loadMessages(userId);
+  card.querySelector('.comment-btn').addEventListener('click', () => {
+    if (!currentUser) { showModal(authSheet); return; }
+    activeVideoId = video.id;
+    loadComments(video.id);
+    showModal(commentsModal);
+  });
+};
+const attachVideoScroll = () => {
+  const containers = [feedContainer, friendsFeedContainer];
+  containers.forEach(cont => {
+    if (!cont) return;
+    const videos = cont.querySelectorAll('video');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        const vid = entry.target;
+        if (entry.isIntersecting) vid.play().catch(e=>console.log);
+        else vid.pause();
+      });
+    }, { threshold: 0.6 });
+    videos.forEach(v => observer.observe(v));
+  });
 };
 
-function loadMessages(otherUserId) {
-  const messagesRef = ref(database, `messages/${currentUserId}_${otherUserId}`);
-  onValue(messagesRef, (snapshot) => {
-    const messages = snapshot.val();
-    const container = document.getElementById('chatMessagesArea');
-    container.innerHTML = '';
-    if (messages) {
-      Object.values(messages).forEach(msg => {
-        const bubble = document.createElement('div');
-        bubble.className = `chat-bubble ${msg.senderId === currentUserId ? 'sent' : 'received'}`;
-        if (msg.text) bubble.innerText = msg.text;
-        if (msg.imageUrl) bubble.innerHTML += `<img src="${msg.imageUrl}">`;
-        container.appendChild(bubble);
-      });
-      container.scrollTop = container.scrollHeight;
-    }
+// ------------------- Profile -------------------
+const loadProfile = async (userId) => {
+  if (!userId) return;
+  currentProfileUserId = userId;
+  const userDoc = await getDoc(doc(db, "users", userId));
+  const userData = userDoc.data() || { username: 'user', avatar: '', bio: '', followers: [], following: [], likes: 0 };
+  const isOwnProfile = currentUser?.uid === userId;
+  const videosQuery = query(collection(db, "videos"), where("userId", "==", userId), orderBy("timestamp", "desc"));
+  const videosSnap = await getDocs(videosQuery);
+  profilePage.innerHTML = `
+    <div class="profile-header">
+      <img class="avatar-large" src="${userData.avatar || 'https://via.placeholder.com/96'}" />
+      <div class="stats-row">
+        <div class="stat"><div class="stat-number">${userData.following?.length || 0}</div><div class="stat-label">Following</div></div>
+        <div class="stat"><div class="stat-number">${userData.followers?.length || 0}</div><div class="stat-label">Followers</div></div>
+        <div class="stat"><div class="stat-number">${userData.likes || 0}</div><div class="stat-label">Likes</div></div>
+      </div>
+      <div class="bio"><strong>@${userData.username}</strong><br>${userData.bio || ''}</div>
+      <div class="action-buttons">
+        ${isOwnProfile ? '<button class="btn-outline" id="editProfileBtn">Edit Profile</button>' : `<button class="btn-outline" id="followBtn">${userData.followers?.includes(currentUser?.uid) ? 'Unfollow' : 'Follow'}</button>`}
+        <button class="btn-outline" id="shareProfileBtn">Share Profile</button>
+      </div>
+    </div>
+    <div class="tabs-profile">
+      <div class="profile-tab active-tab" data-tab="grid"><i class="fas fa-th"></i></div>
+      <div class="profile-tab" data-tab="liked"><i class="fas fa-heart"></i></div>
+    </div>
+    <div id="profileContent" class="video-grid"></div>
+  `;
+  const gridContainer = document.getElementById('profileContent');
+  videosSnap.forEach(doc => {
+    const vid = doc.data();
+    const div = document.createElement('div');
+    div.className = 'grid-video';
+    div.innerHTML = `<video src="${vid.videoUrl}" muted></video><div class="play-icon-overlay"><i class="fas fa-play"></i> ${vid.likes || 0}</div>`;
+    gridContainer.appendChild(div);
   });
-}
-
-document.getElementById('chatSendBtn')?.addEventListener('click', async () => {
-  const input = document.getElementById('chatMessageInput');
-  if (!input.value.trim() || !currentChatWith) return;
-  await push(ref(database, `messages/${currentUserId}_${currentChatWith.id}`), {
-    text: input.value,
-    senderId: currentUserId,
-    senderName: currentUsername,
-    timestamp: serverTimestamp()
-  });
-  input.value = '';
-});
-
-document.getElementById('chatImageBtn')?.addEventListener('click', () => {
-  document.getElementById('chatImageInput').click();
-});
-
-document.getElementById('chatImageInput')?.addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file || !currentChatWith) return;
-  const imageRef = storageRef(storage, `chat_images/${Date.now()}_${file.name}`);
-  await uploadBytes(imageRef, file);
-  const imageUrl = await getDownloadURL(imageRef);
-  await push(ref(database, `messages/${currentUserId}_${currentChatWith.id}`), {
-    imageUrl: imageUrl,
-    senderId: currentUserId,
-    senderName: currentUsername,
-    timestamp: serverTimestamp()
-  });
-  showToast('✅ تم إرسال الصورة');
-});
-
-// Profile grid (user videos)
-async function updateProfileGrid() {
-  const videosRef = ref(database, 'videos');
-  const snapshot = await get(videosRef);
-  const videos = snapshot.val();
-  const grid = document.getElementById('profileGrid');
-  grid.innerHTML = '';
-  if (videos) {
-    Object.entries(videos).forEach(([id, video]) => {
-      if (video.userId === currentUserId) {
-        const likesCount = video.likes ? Object.keys(video.likes).length : 0;
-        const item = document.createElement('div');
-        item.className = 'grid-item';
-        item.style.backgroundImage = `url(${video.videoUrl})`;
-        item.style.backgroundSize = 'cover';
-        item.innerHTML = `<div class="view-count-badge"><i class="fas fa-heart"></i> ${likesCount}</div>`;
-        item.onclick = () => {
-          const idx = allVideos.findIndex(v => v.id === id);
-          if (idx !== -1) {
-            switchView('home');
-            setTimeout(() => {
-              const feed = document.getElementById('feedContainer');
-              const items = feed.querySelectorAll('.video-item');
-              if (items[idx]) items[idx].scrollIntoView({ behavior: 'smooth' });
-            }, 100);
-          }
-        };
-        grid.appendChild(item);
-      }
-    });
-  }
-  if (grid.children.length === 0) {
-    grid.innerHTML = '<div style="color:white; text-align:center; grid-column:span 3;">لا توجد فيديوهات بعد</div>';
-  }
-}
-
-// Load videos from Firebase
-function loadVideos() {
-  const videosRef = ref(database, 'videos');
-  onValue(videosRef, (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-      allVideos = Object.entries(data).map(([id, video]) => ({ id, ...video }));
-      allVideos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      renderFeed(allVideos);
+  if (!isOwnProfile) document.getElementById('followBtn')?.addEventListener('click', async () => {
+    const userRef = doc(db, "users", userId);
+    const currentUserRef = doc(db, "users", currentUser.uid);
+    const isFollowing = userData.followers?.includes(currentUser.uid);
+    if (isFollowing) {
+      await updateDoc(userRef, { followers: arrayRemove(currentUser.uid) });
+      await updateDoc(currentUserRef, { following: arrayRemove(userId) });
     } else {
-      renderFeed([]);
+      await updateDoc(userRef, { followers: arrayUnion(currentUser.uid) });
+      await updateDoc(currentUserRef, { following: arrayUnion(userId) });
     }
+    loadProfile(userId);
   });
-}
-
-// Switch views
-function switchView(viewId) {
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.getElementById(viewId + 'View').classList.add('active');
-  document.querySelectorAll('.nav-icon').forEach(icon => icon.classList.remove('active'));
-  document.querySelector(`.nav-icon[data-nav="${viewId}"]`).classList.add('active');
-  if (viewId === 'chat') {
-    loadChatUsers();
-  }
-  if (viewId === 'profile') {
-    updateProfileGrid();
-  }
-}
-
-// Load user data after authentication
-async function loadUserData(user) {
-  currentUser = user;
-  currentUserId = user.uid;
-  const userRef = ref(database, `users/${currentUserId}`);
-  const snapshot = await get(userRef);
-  if (snapshot.exists()) {
-    currentUsername = snapshot.val().username;
-    document.getElementById('profileUsername').innerText = currentUsername;
-    if (user.email === ADMIN_EMAIL) {
-      isAdmin = true;
-      document.getElementById('adminIcon').style.display = 'flex';
-    } else {
-      isAdmin = false;
-      document.getElementById('adminIcon').style.display = 'none';
-    }
-  } else {
-    // Should not happen because we create user on registration, but just in case
-    const username = prompt('أدخل اسم المستخدم الخاص بك:');
-    if (username) {
-      await set(userRef, {
-        username: username,
-        email: user.email,
-        avatar: `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(username)}`,
-        createdAt: serverTimestamp()
-      });
-      currentUsername = username;
-      document.getElementById('profileUsername').innerText = username;
-    }
-  }
-  loadVideos();
-  loadChatUsers();
-  switchView('home');
-}
-
-// Auth UI initialization
-function initAuthUI() {
-  const authModal = document.getElementById('authModal');
-  const loginForm = document.getElementById('loginForm');
-  const registerForm = document.getElementById('registerForm');
-  const loginBtn = document.getElementById('loginBtn');
-  const registerBtn = document.getElementById('registerBtn');
-  const logoutBtn = document.getElementById('logoutBtn');
-  const tabs = document.querySelectorAll('.auth-tab');
-
-  tabs.forEach(tab => {
+  document.querySelectorAll('.profile-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      if (tab.dataset.tab === 'login') {
-        loginForm.classList.remove('hidden');
-        registerForm.classList.add('hidden');
-      } else {
-        loginForm.classList.add('hidden');
-        registerForm.classList.remove('hidden');
-      }
+      document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active-tab'));
+      tab.classList.add('active-tab');
+      // switch grid content
     });
   });
+};
 
-  loginBtn.addEventListener('click', async () => {
-    const email = document.getElementById('loginEmail').value.trim();
-    const password = document.getElementById('loginPassword').value;
-    const msgDiv = document.getElementById('loginMessage');
-    if (!email || !password) {
-      msgDiv.innerText = 'الرجاء إدخال البريد وكلمة المرور';
-      return;
-    }
-    try {
-      const userCred = await signInWithEmailAndPassword(auth, email, password);
-      msgDiv.innerText = 'تم تسجيل الدخول بنجاح';
-      setTimeout(() => {
-        authModal.classList.add('hide');
-        loadUserData(userCred.user);
-      }, 500);
-    } catch (error) {
-      msgDiv.innerText = 'فشل الدخول: ' + error.message;
-    }
-  });
-
-  registerBtn.addEventListener('click', async () => {
-    const username = document.getElementById('regUsername').value.trim();
-    const email = document.getElementById('regEmail').value.trim();
-    const password = document.getElementById('regPassword').value;
-    const msgDiv = document.getElementById('registerMessage');
-    if (!username || !email || !password) {
-      msgDiv.innerText = 'الرجاء ملء جميع الحقول';
-      return;
-    }
-    try {
-      const userCred = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = userCred.user.uid;
-      await set(ref(database, `users/${uid}`), {
-        username: username,
-        email: email,
-        avatar: `https://ui-avatars.com/api/?background=ff0050&color=fff&name=${encodeURIComponent(username)}`,
-        createdAt: serverTimestamp()
-      });
-      msgDiv.innerText = 'تم إنشاء الحساب بنجاح';
-      setTimeout(() => {
-        authModal.classList.add('hide');
-        loadUserData(userCred.user);
-      }, 500);
-    } catch (error) {
-      msgDiv.innerText = 'فشل التسجيل: ' + error.message;
-    }
-  });
-
-  logoutBtn.addEventListener('click', async () => {
-    await signOut(auth);
-    authModal.classList.remove('hide');
-    // Reset UI
-    document.getElementById('homeView').classList.remove('active');
-    document.getElementById('profileView').classList.remove('active');
-    document.getElementById('chatView').classList.remove('active');
-    document.getElementById('homeView').classList.add('active');
-    document.querySelectorAll('.nav-icon').forEach(icon => icon.classList.remove('active'));
-    document.querySelector('.nav-icon[data-nav="home"]').classList.add('active');
-    showToast('تم تسجيل الخروج');
-  });
-}
-
-// Edit profile
-document.getElementById('editProfileBtn')?.addEventListener('click', async () => {
-  const newName = prompt('تعديل اسم المستخدم:', currentUsername);
-  if (newName && newName.trim()) {
-    currentUsername = newName.trim();
-    await update(ref(database, `users/${currentUserId}`), { username: currentUsername });
-    document.getElementById('profileUsername').innerText = currentUsername;
-    showToast('✅ تم تحديث الاسم');
+// ------------------- Inbox (DM) -------------------
+const loadInbox = async () => {
+  if (!currentUser) { inboxContent.innerHTML = '<p style="padding:20px">Login to see messages</p>'; return; }
+  const q = query(collection(db, "conversations"), where("participants", "array-contains", currentUser.uid));
+  const snap = await getDocs(q);
+  inboxContent.innerHTML = '<div class="inbox-list"><div class="active-status-row"><div class="story-circle"><img class="story-img" src="https://via.placeholder.com/52"/><div>Online</div></div></div>';
+  for (const docSnap of snap.docs) {
+    const conv = docSnap.data();
+    const otherId = conv.participants.find(p => p !== currentUser.uid);
+    const otherUser = await getDoc(doc(db, "users", otherId));
+    const otherData = otherUser.data();
+    inboxContent.innerHTML += `
+      <div class="conv-item" data-conv="${docSnap.id}" data-user="${otherId}">
+        <img class="conv-img" src="${otherData?.avatar || 'https://via.placeholder.com/50'}" />
+        <div class="conv-info"><div class="conv-name">${otherData?.username}</div><div class="conv-preview">${conv.lastMessage || ''}</div></div>
+      </div>
+    `;
   }
-});
+  document.querySelectorAll('.conv-item').forEach(el => {
+    el.addEventListener('click', () => openChat(el.dataset.conv, el.dataset.user));
+  });
+};
+const openChat = async (convId, userId) => {
+  const userDoc = await getDoc(doc(db, "users", userId));
+  const username = userDoc.data()?.username;
+  const chatModal = document.createElement('div');
+  chatModal.className = 'modal-sheet open';
+  chatModal.style.zIndex = '1100';
+  chatModal.innerHTML = `
+    <div class="chat-header"><i class="fas fa-arrow-left" id="closeChat"></i><strong>${username}</strong></div>
+    <div id="chatMessages" style="height:60vh; overflow-y:auto; padding:12px;"></div>
+    <div style="display:flex; gap:8px; padding:12px;"><input id="chatMsgInput" placeholder="Message..." style="flex:1"/><button id="sendMsgBtn">Send</button></div>
+  `;
+  document.body.appendChild(chatModal);
+  document.getElementById('closeChat').onclick = () => chatModal.remove();
+  const messagesRef = collection(db, "conversations", convId, "messages");
+  onSnapshot(query(messagesRef, orderBy("timestamp")), (snap) => {
+    const msgsDiv = document.getElementById('chatMessages');
+    msgsDiv.innerHTML = '';
+    snap.forEach(doc => {
+      const msg = doc.data();
+      const div = document.createElement('div');
+      div.style.textAlign = msg.senderId === currentUser.uid ? 'right' : 'left';
+      div.style.margin = '8px';
+      div.innerHTML = `<div style="background:${msg.senderId === currentUser.uid ? '#fe2c55' : '#2c2c2c'}; padding:8px 12px; border-radius:20px; display:inline-block">${msg.text}</div>`;
+      msgsDiv.appendChild(div);
+    });
+  });
+  document.getElementById('sendMsgBtn').onclick = async () => {
+    const text = document.getElementById('chatMsgInput').value;
+    if (!text.trim()) return;
+    await addDoc(messagesRef, { text, senderId: currentUser.uid, timestamp: serverTimestamp() });
+    await updateDoc(doc(db, "conversations", convId), { lastMessage: text, lastUpdated: serverTimestamp() });
+    document.getElementById('chatMsgInput').value = '';
+  };
+};
 
-// Admin icon click
-document.getElementById('adminIcon')?.addEventListener('click', () => {
-  if (isAdmin) showAdminPanel();
-});
-document.getElementById('closeAdmin')?.addEventListener('click', () => {
-  document.getElementById('adminPanel').classList.remove('show');
-});
+// ------------------- Comments -------------------
+const loadComments = async (videoId) => {
+  const commentsRef = collection(db, "videos", videoId, "comments");
+  const q = query(commentsRef, orderBy("timestamp", "desc"));
+  const snap = await getDocs(q);
+  const commentsDiv = document.getElementById('commentsList');
+  commentsDiv.innerHTML = '';
+  snap.forEach(doc => {
+    const c = doc.data();
+    commentsDiv.innerHTML += `<div><strong>${c.username}</strong>: ${c.text}</div>`;
+  });
+};
+postCommentBtn.onclick = async () => {
+  const text = newCommentInput.value;
+  if (!text || !activeVideoId) return;
+  const user = currentUser;
+  if (!user) return;
+  await addDoc(collection(db, "videos", activeVideoId, "comments"), {
+    text, userId: user.uid, username: user.displayName || user.email, timestamp: serverTimestamp()
+  });
+  const videoRef = doc(db, "videos", activeVideoId);
+  await updateDoc(videoRef, { commentsCount: (await getDoc(videoRef)).data().commentsCount + 1 });
+  loadComments(activeVideoId);
+  newCommentInput.value = '';
+};
 
-// Navigation
-document.querySelectorAll('.nav-icon').forEach(icon => {
-  icon.addEventListener('click', () => {
-    switchView(icon.getAttribute('data-nav'));
+// ------------------- Video Upload -------------------
+uploadArea.addEventListener('click', () => videoFileInput.click());
+videoFileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) uploadArea.innerHTML = `<p>Selected: ${file.name}</p>`;
+});
+submitUpload.onclick = async () => {
+  if (!currentUser) { alert('Login first'); hideModals(); showModal(authSheet); return; }
+  const file = videoFileInput.files[0];
+  if (!file) return;
+  const caption = videoCaption.value;
+  const storageRef = ref(storage, `videos/${currentUser.uid}/${Date.now()}_${file.name}`);
+  await uploadBytes(storageRef, file);
+  const videoUrl = await getDownloadURL(storageRef);
+  await addDoc(collection(db, "videos"), {
+    userId: currentUser.uid,
+    username: currentUser.displayName || currentUser.email,
+    videoUrl,
+    caption,
+    likes: 0,
+    commentsCount: 0,
+    timestamp: serverTimestamp(),
+    likedBy: []
+  });
+  hideModals();
+  loadFeed();
+};
+
+// ------------------- Search -------------------
+openSearchBtn.onclick = () => showModal(searchModal);
+searchInput.addEventListener('input', async () => {
+  const term = searchInput.value.toLowerCase();
+  if (!term) { searchResultsDiv.innerHTML = ''; return; }
+  const usersSnap = await getDocs(query(collection(db, "users"), limit(5)));
+  const videosSnap = await getDocs(query(collection(db, "videos"), limit(5)));
+  let html = '<h4>Users</h4>';
+  usersSnap.forEach(doc => {
+    const u = doc.data();
+    if (u.username?.toLowerCase().includes(term)) html += `<div class="conv-item" data-uid="${doc.id}"><img class="conv-img" src="${u.avatar || 'https://via.placeholder.com/50'}"/> @${u.username}</div>`;
+  });
+  html += '<h4>Videos</h4>';
+  videosSnap.forEach(doc => {
+    const v = doc.data();
+    if (v.caption?.toLowerCase().includes(term)) html += `<div>🎬 ${v.caption}</div>`;
+  });
+  searchResultsDiv.innerHTML = html;
+  document.querySelectorAll('[data-uid]').forEach(el => {
+    el.addEventListener('click', () => {
+      setActivePage('profile');
+      loadProfile(el.dataset.uid);
+      hideModals();
+    });
   });
 });
 
-// Start app: listen to auth state
-onAuthStateChanged(auth, (user) => {
+// ------------------- Auth State -------------------
+onAuthStateChanged(auth, async (user) => {
+  currentUser = user;
   if (user) {
-    document.getElementById('authModal').classList.add('hide');
-    loadUserData(user);
+    const userRef = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userRef);
+    if (!userSnap.exists()) {
+      await setDoc(userRef, {
+        username: user.displayName || user.email.split('@')[0],
+        email: user.email,
+        avatar: user.photoURL || '',
+        followers: [],
+        following: [],
+        likes: 0,
+        bio: ''
+      });
+    }
+    hideModals();
+    loadFeed();
+    if (pages.profile.classList.contains('active-page')) loadProfile(user.uid);
   } else {
-    document.getElementById('authModal').classList.remove('hide');
+    showModal(authSheet);
   }
 });
 
-initAuthUI();
+// Top Tabs (For You / Following)
+document.querySelectorAll('.tab-item').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentFeed = tab.getAttribute('data-feed');
+    loadFeed();
+  });
+});
+
+// Live icon
+liveIconBtn.onclick = () => alert("Live streaming coming soon");
+
+// initial
+loadFeed();
