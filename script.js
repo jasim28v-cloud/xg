@@ -1,4 +1,3 @@
-// script.js
 import { auth, db, storage } from './firebase-config.js';
 import { 
   signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, 
@@ -7,9 +6,9 @@ import {
 import { 
   collection, addDoc, getDocs, query, orderBy, limit, where, 
   doc, getDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot,
-  serverTimestamp, Timestamp, setDoc, deleteDoc
+  serverTimestamp, deleteDoc, setDoc, writeBatch
 } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
 // ------------------- DOM Elements -------------------
 const feedContainer = document.getElementById('feedContainer');
@@ -35,45 +34,59 @@ const postCommentBtn = document.getElementById('postCommentBtn');
 let currentUser = null;
 let currentFeed = 'forYou';
 let activeVideoId = null;
-let currentProfileUserId = null;
+let isAdmin = false;
+let allVideos = []; // cache for feed
 
-// ------------------- Auth UI -------------------
-const showModal = (modal) => {
-  modal.classList.add('open');
-  modalOverlay.style.display = 'block';
-};
-const hideModals = () => {
-  document.querySelectorAll('.modal-sheet').forEach(m => m.classList.remove('open'));
-  modalOverlay.style.display = 'none';
-};
+// ------------------- Helper Functions -------------------
+const showModal = (modal) => { modal.classList.add('open'); modalOverlay.style.display = 'block'; };
+const hideModals = () => { document.querySelectorAll('.modal-sheet').forEach(m => m.classList.remove('open')); modalOverlay.style.display = 'none'; };
 modalOverlay.addEventListener('click', hideModals);
 
+// ------------------- Auth -------------------
 document.getElementById('googleSignIn').onclick = async () => {
   const provider = new GoogleAuthProvider();
   try {
-    await signInWithPopup(auth, provider);
+    const result = await signInWithPopup(auth, provider);
+    await ensureUserDocument(result.user);
     hideModals();
   } catch (err) { alert(err.message); }
 };
-document.getElementById('emailAuthBtn').onclick = () => {
-  document.getElementById('emailForm').style.display = 'block';
-};
+
 let isLoginMode = true;
 document.getElementById('toggleAuthMode').onclick = () => {
   isLoginMode = !isLoginMode;
   document.getElementById('toggleAuthMode').innerText = isLoginMode ? "Create new account" : "Already have account? Sign in";
   document.getElementById('submitAuthBtn').innerText = isLoginMode ? "Sign In" : "Sign Up";
 };
+document.getElementById('emailAuthBtn').onclick = () => { document.getElementById('emailForm').style.display = 'block'; };
 document.getElementById('submitAuthBtn').onclick = async () => {
   const email = document.getElementById('authEmail').value;
   const pwd = document.getElementById('authPassword').value;
   try {
-    if (isLoginMode) await signInWithEmailAndPassword(auth, email, pwd);
-    else await createUserWithEmailAndPassword(auth, email, pwd);
+    let userCred;
+    if (isLoginMode) userCred = await signInWithEmailAndPassword(auth, email, pwd);
+    else userCred = await createUserWithEmailAndPassword(auth, email, pwd);
+    await ensureUserDocument(userCred.user);
     hideModals();
   } catch (err) { alert(err.message); }
 };
-document.getElementById('skipInterests').onclick = () => hideModals();
+
+async function ensureUserDocument(user) {
+  const userRef = doc(db, "users", user.uid);
+  const userSnap = await getDoc(userRef);
+  if (!userSnap.exists()) {
+    await setDoc(userRef, {
+      username: user.displayName || user.email.split('@')[0],
+      email: user.email,
+      avatar: user.photoURL || 'https://via.placeholder.com/96',
+      followers: [],
+      following: [],
+      likes: 0,
+      bio: '',
+      createdAt: serverTimestamp()
+    });
+  }
+}
 
 // ------------------- Navigation -------------------
 const pages = {
@@ -88,7 +101,7 @@ const setActivePage = (pageId) => {
   pages[pageId].classList.add('active-page');
   navItems.forEach(item => item.classList.remove('active'));
   document.querySelector(`[data-nav="${pageId}"]`).classList.add('active');
-  if (pageId === 'profile') loadProfile(currentUser?.uid);
+  if (pageId === 'profile' && currentUser) loadProfile(currentUser.uid);
   if (pageId === 'inbox') loadInbox();
   if (pageId === 'home' || pageId === 'friends') loadFeed();
 };
@@ -104,33 +117,39 @@ navItems.forEach(item => {
   });
 });
 
-// ------------------- Feed Loading -------------------
-const loadFeed = async () => {
+// ------------------- Video Feed -------------------
+async function loadFeed() {
   const container = currentFeed === 'forYou' ? feedContainer : friendsFeedContainer;
-  const q = query(collection(db, "videos"), orderBy("timestamp", "desc"), limit(30));
+  if (!container) return;
+  container.innerHTML = '<div class="loading">Loading videos...</div>';
+  const q = query(collection(db, "videos"), orderBy("timestamp", "desc"), limit(50));
   const snapshot = await getDocs(q);
+  allVideos = [];
   container.innerHTML = '';
   for (const docSnap of snapshot.docs) {
     const vid = { id: docSnap.id, ...docSnap.data() };
-    if (currentFeed === 'following' && currentUser && !vid.followersOnly) {
-      // simple: check if user follows video author
+    if (currentFeed === 'following' && currentUser) {
       const userDoc = await getDoc(doc(db, "users", currentUser.uid));
       const following = userDoc.data()?.following || [];
       if (!following.includes(vid.userId)) continue;
     }
+    allVideos.push(vid);
     renderVideoCard(container, vid);
   }
-  // attach play observers
   attachVideoScroll();
-};
-const renderVideoCard = (container, video) => {
+}
+
+function renderVideoCard(container, video) {
   const card = document.createElement('div');
   card.className = 'video-card';
   card.innerHTML = `
     <video src="${video.videoUrl}" poster="${video.thumbnailUrl || ''}" loop muted playsinline></video>
     <div class="video-overlay">
       <div class="video-info">
-        <div class="video-username" data-userid="${video.userId}">@${video.username || 'user'}</div>
+        <div class="video-username" data-userid="${video.userId}">
+          <img src="${video.userAvatar || 'https://via.placeholder.com/32'}" style="width:32px;height:32px;border-radius:50%">
+          @${video.username || 'user'}
+        </div>
         <div class="video-caption">${video.caption || ''}</div>
       </div>
       <div class="video-actions">
@@ -141,30 +160,42 @@ const renderVideoCard = (container, video) => {
     </div>
   `;
   container.appendChild(card);
-  // like logic
+
+  // Like
   card.querySelector('.like-btn').addEventListener('click', async (e) => {
     e.stopPropagation();
     if (!currentUser) { showModal(authSheet); return; }
     const vidId = card.querySelector('.like-btn').dataset.vid;
     const vidRef = doc(db, "videos", vidId);
     const vidSnap = await getDoc(vidRef);
-    const likes = vidSnap.data().likes || 0;
     const likedBy = vidSnap.data().likedBy || [];
-    if (likedBy.includes(currentUser.uid)) {
-      await updateDoc(vidRef, { likes: likes-1, likedBy: arrayRemove(currentUser.uid) });
-    } else {
-      await updateDoc(vidRef, { likes: likes+1, likedBy: arrayUnion(currentUser.uid) });
-    }
+    const isLiked = likedBy.includes(currentUser.uid);
+    const newLikes = isLiked ? (vidSnap.data().likes - 1) : (vidSnap.data().likes + 1);
+    await updateDoc(vidRef, {
+      likes: newLikes,
+      likedBy: isLiked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
+    });
     loadFeed(); // refresh
   });
+
+  // Comments
   card.querySelector('.comment-btn').addEventListener('click', () => {
     if (!currentUser) { showModal(authSheet); return; }
     activeVideoId = video.id;
     loadComments(video.id);
     showModal(commentsModal);
   });
-};
-const attachVideoScroll = () => {
+
+  // Profile click
+  card.querySelector('.video-username').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const userId = card.querySelector('.video-username').dataset.userid;
+    setActivePage('profile');
+    loadProfile(userId);
+  });
+}
+
+function attachVideoScroll() {
   const containers = [feedContainer, friendsFeedContainer];
   containers.forEach(cont => {
     if (!cont) return;
@@ -178,17 +209,18 @@ const attachVideoScroll = () => {
     }, { threshold: 0.6 });
     videos.forEach(v => observer.observe(v));
   });
-};
+}
 
 // ------------------- Profile -------------------
-const loadProfile = async (userId) => {
+async function loadProfile(userId) {
   if (!userId) return;
-  currentProfileUserId = userId;
   const userDoc = await getDoc(doc(db, "users", userId));
-  const userData = userDoc.data() || { username: 'user', avatar: '', bio: '', followers: [], following: [], likes: 0 };
+  if (!userDoc.exists()) return;
+  const userData = userDoc.data();
   const isOwnProfile = currentUser?.uid === userId;
   const videosQuery = query(collection(db, "videos"), where("userId", "==", userId), orderBy("timestamp", "desc"));
   const videosSnap = await getDocs(videosQuery);
+
   profilePage.innerHTML = `
     <div class="profile-header">
       <img class="avatar-large" src="${userData.avatar || 'https://via.placeholder.com/96'}" />
@@ -199,7 +231,8 @@ const loadProfile = async (userId) => {
       </div>
       <div class="bio"><strong>@${userData.username}</strong><br>${userData.bio || ''}</div>
       <div class="action-buttons">
-        ${isOwnProfile ? '<button class="btn-outline" id="editProfileBtn">Edit Profile</button>' : `<button class="btn-outline" id="followBtn">${userData.followers?.includes(currentUser?.uid) ? 'Unfollow' : 'Follow'}</button>`}
+        ${isOwnProfile ? '<button class="btn-outline" id="editProfileBtn">Edit Profile</button>' : 
+          `<button class="btn-outline" id="followBtn">${userData.followers?.includes(currentUser?.uid) ? 'Unfollow' : 'Follow'}</button>`}
         <button class="btn-outline" id="shareProfileBtn">Share Profile</button>
       </div>
     </div>
@@ -209,42 +242,143 @@ const loadProfile = async (userId) => {
     </div>
     <div id="profileContent" class="video-grid"></div>
   `;
+
   const gridContainer = document.getElementById('profileContent');
   videosSnap.forEach(doc => {
     const vid = doc.data();
     const div = document.createElement('div');
     div.className = 'grid-video';
     div.innerHTML = `<video src="${vid.videoUrl}" muted></video><div class="play-icon-overlay"><i class="fas fa-play"></i> ${vid.likes || 0}</div>`;
+    div.addEventListener('click', () => {
+      // play video in feed? we'll just scroll to it in feed view
+      setActivePage('home');
+      setTimeout(() => {
+        const targetVideo = Array.from(document.querySelectorAll('.video-card')).find(card => card.querySelector('video')?.src === vid.videoUrl);
+        if (targetVideo) targetVideo.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    });
     gridContainer.appendChild(div);
   });
-  if (!isOwnProfile) document.getElementById('followBtn')?.addEventListener('click', async () => {
-    const userRef = doc(db, "users", userId);
-    const currentUserRef = doc(db, "users", currentUser.uid);
-    const isFollowing = userData.followers?.includes(currentUser.uid);
-    if (isFollowing) {
-      await updateDoc(userRef, { followers: arrayRemove(currentUser.uid) });
-      await updateDoc(currentUserRef, { following: arrayRemove(userId) });
-    } else {
-      await updateDoc(userRef, { followers: arrayUnion(currentUser.uid) });
-      await updateDoc(currentUserRef, { following: arrayUnion(userId) });
-    }
-    loadProfile(userId);
+
+  if (!isOwnProfile) {
+    document.getElementById('followBtn')?.addEventListener('click', async () => {
+      const userRef = doc(db, "users", userId);
+      const currentUserRef = doc(db, "users", currentUser.uid);
+      const isFollowing = userData.followers?.includes(currentUser.uid);
+      if (isFollowing) {
+        await updateDoc(userRef, { followers: arrayRemove(currentUser.uid) });
+        await updateDoc(currentUserRef, { following: arrayRemove(userId) });
+      } else {
+        await updateDoc(userRef, { followers: arrayUnion(currentUser.uid) });
+        await updateDoc(currentUserRef, { following: arrayUnion(userId) });
+      }
+      loadProfile(userId);
+    });
+  }
+
+  // Admin Panel
+  if (isAdmin && isOwnProfile) {
+    const adminPanel = document.createElement('div');
+    adminPanel.className = 'admin-panel';
+    adminPanel.innerHTML = `
+      <h3 style="margin:20px; color:#fe2c55;">🛡️ Admin Dashboard</h3>
+      <div class="admin-section">
+        <h4>👥 Users Management</h4>
+        <div id="adminUserList" class="admin-list"></div>
+      </div>
+      <div class="admin-section">
+        <h4>🎬 Videos Management</h4>
+        <div id="adminVideoList" class="admin-list"></div>
+      </div>
+    `;
+    profilePage.appendChild(adminPanel);
+    loadAllUsersForAdmin();
+    loadAllVideosForAdmin();
+  }
+}
+
+async function loadAllUsersForAdmin() {
+  const usersSnap = await getDocs(collection(db, "users"));
+  const container = document.getElementById('adminUserList');
+  if (!container) return;
+  container.innerHTML = '';
+  usersSnap.forEach(docSnap => {
+    const userData = docSnap.data();
+    const userDiv = document.createElement('div');
+    userDiv.className = 'admin-item';
+    userDiv.innerHTML = `
+      <span>${userData.username} (${userData.email})</span>
+      <button class="delete-user-btn" data-uid="${docSnap.id}">Delete</button>
+    `;
+    container.appendChild(userDiv);
   });
-  document.querySelectorAll('.profile-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active-tab'));
-      tab.classList.add('active-tab');
-      // switch grid content
+  document.querySelectorAll('.delete-user-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const uid = btn.dataset.uid;
+      if (confirm(`Delete user ${uid} and all their videos?`)) {
+        // Delete user's videos from Firestore and Storage
+        const videosSnap = await getDocs(query(collection(db, "videos"), where("userId", "==", uid)));
+        for (const vidDoc of videosSnap.docs) {
+          const videoData = vidDoc.data();
+          if (videoData.videoUrl) {
+            try {
+              const storageRef = ref(storage, videoData.videoUrl);
+              await deleteObject(storageRef);
+            } catch(e) { console.log("Storage delete error", e); }
+          }
+          await deleteDoc(doc(db, "videos", vidDoc.id));
+        }
+        // Delete user document
+        await deleteDoc(doc(db, "users", uid));
+        loadAllUsersForAdmin();
+        loadAllVideosForAdmin();
+        loadFeed(); // refresh feed
+      }
     });
   });
-};
+}
+
+async function loadAllVideosForAdmin() {
+  const videosSnap = await getDocs(collection(db, "videos"));
+  const container = document.getElementById('adminVideoList');
+  if (!container) return;
+  container.innerHTML = '';
+  videosSnap.forEach(docSnap => {
+    const vid = docSnap.data();
+    const videoDiv = document.createElement('div');
+    videoDiv.className = 'admin-item';
+    videoDiv.innerHTML = `
+      <span>${vid.username}: ${vid.caption || 'no caption'}</span>
+      <button class="delete-video-btn" data-vid="${docSnap.id}">Delete</button>
+    `;
+    container.appendChild(videoDiv);
+  });
+  document.querySelectorAll('.delete-video-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const vidId = btn.dataset.vid;
+      if (confirm('Delete this video?')) {
+        const vidRef = doc(db, "videos", vidId);
+        const vidSnap = await getDoc(vidRef);
+        if (vidSnap.exists() && vidSnap.data().videoUrl) {
+          try {
+            const storageRef = ref(storage, vidSnap.data().videoUrl);
+            await deleteObject(storageRef);
+          } catch(e) {}
+        }
+        await deleteDoc(vidRef);
+        loadAllVideosForAdmin();
+        loadFeed();
+      }
+    });
+  });
+}
 
 // ------------------- Inbox (DM) -------------------
-const loadInbox = async () => {
+async function loadInbox() {
   if (!currentUser) { inboxContent.innerHTML = '<p style="padding:20px">Login to see messages</p>'; return; }
   const q = query(collection(db, "conversations"), where("participants", "array-contains", currentUser.uid));
   const snap = await getDocs(q);
-  inboxContent.innerHTML = '<div class="inbox-list"><div class="active-status-row"><div class="story-circle"><img class="story-img" src="https://via.placeholder.com/52"/><div>Online</div></div></div>';
+  inboxContent.innerHTML = '<div class="inbox-list"><div class="active-status-row">📱 Your conversations</div>';
   for (const docSnap of snap.docs) {
     const conv = docSnap.data();
     const otherId = conv.participants.find(p => p !== currentUser.uid);
@@ -260,8 +394,9 @@ const loadInbox = async () => {
   document.querySelectorAll('.conv-item').forEach(el => {
     el.addEventListener('click', () => openChat(el.dataset.conv, el.dataset.user));
   });
-};
-const openChat = async (convId, userId) => {
+}
+
+async function openChat(convId, userId) {
   const userDoc = await getDoc(doc(db, "users", userId));
   const username = userDoc.data()?.username;
   const chatModal = document.createElement('div');
@@ -294,10 +429,10 @@ const openChat = async (convId, userId) => {
     await updateDoc(doc(db, "conversations", convId), { lastMessage: text, lastUpdated: serverTimestamp() });
     document.getElementById('chatMsgInput').value = '';
   };
-};
+}
 
 // ------------------- Comments -------------------
-const loadComments = async (videoId) => {
+async function loadComments(videoId) {
   const commentsRef = collection(db, "videos", videoId, "comments");
   const q = query(commentsRef, orderBy("timestamp", "desc"));
   const snap = await getDocs(q);
@@ -307,17 +442,17 @@ const loadComments = async (videoId) => {
     const c = doc.data();
     commentsDiv.innerHTML += `<div><strong>${c.username}</strong>: ${c.text}</div>`;
   });
-};
+}
 postCommentBtn.onclick = async () => {
   const text = newCommentInput.value;
-  if (!text || !activeVideoId) return;
-  const user = currentUser;
-  if (!user) return;
+  if (!text || !activeVideoId || !currentUser) return;
   await addDoc(collection(db, "videos", activeVideoId, "comments"), {
-    text, userId: user.uid, username: user.displayName || user.email, timestamp: serverTimestamp()
+    text, userId: currentUser.uid, username: currentUser.displayName || currentUser.email, timestamp: serverTimestamp()
   });
   const videoRef = doc(db, "videos", activeVideoId);
-  await updateDoc(videoRef, { commentsCount: (await getDoc(videoRef)).data().commentsCount + 1 });
+  const videoSnap = await getDoc(videoRef);
+  const newCount = (videoSnap.data().commentsCount || 0) + 1;
+  await updateDoc(videoRef, { commentsCount: newCount });
   loadComments(activeVideoId);
   newCommentInput.value = '';
 };
@@ -326,19 +461,22 @@ postCommentBtn.onclick = async () => {
 uploadArea.addEventListener('click', () => videoFileInput.click());
 videoFileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
-  if (file) uploadArea.innerHTML = `<p>Selected: ${file.name}</p>`;
+  if (file) uploadArea.innerHTML = `<p>Selected: ${file.name}</p><i class="fas fa-check-circle"></i>`;
 });
 submitUpload.onclick = async () => {
   if (!currentUser) { alert('Login first'); hideModals(); showModal(authSheet); return; }
   const file = videoFileInput.files[0];
-  if (!file) return;
+  if (!file) return alert('Select a video');
   const caption = videoCaption.value;
   const storageRef = ref(storage, `videos/${currentUser.uid}/${Date.now()}_${file.name}`);
   await uploadBytes(storageRef, file);
   const videoUrl = await getDownloadURL(storageRef);
+  const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+  const userData = userDoc.data();
   await addDoc(collection(db, "videos"), {
     userId: currentUser.uid,
-    username: currentUser.displayName || currentUser.email,
+    username: userData?.username || currentUser.displayName || currentUser.email,
+    userAvatar: userData?.avatar || currentUser.photoURL || 'https://via.placeholder.com/32',
     videoUrl,
     caption,
     likes: 0,
@@ -355,17 +493,17 @@ openSearchBtn.onclick = () => showModal(searchModal);
 searchInput.addEventListener('input', async () => {
   const term = searchInput.value.toLowerCase();
   if (!term) { searchResultsDiv.innerHTML = ''; return; }
-  const usersSnap = await getDocs(query(collection(db, "users"), limit(5)));
-  const videosSnap = await getDocs(query(collection(db, "videos"), limit(5)));
+  const usersSnap = await getDocs(collection(db, "users"));
+  const videosSnap = await getDocs(collection(db, "videos"));
   let html = '<h4>Users</h4>';
   usersSnap.forEach(doc => {
     const u = doc.data();
-    if (u.username?.toLowerCase().includes(term)) html += `<div class="conv-item" data-uid="${doc.id}"><img class="conv-img" src="${u.avatar || 'https://via.placeholder.com/50'}"/> @${u.username}</div>`;
+    if (u.username?.toLowerCase().includes(term)) html += `<div class="conv-item search-result" data-uid="${doc.id}"><img class="conv-img" src="${u.avatar || 'https://via.placeholder.com/50'}"/> @${u.username}</div>`;
   });
   html += '<h4>Videos</h4>';
   videosSnap.forEach(doc => {
     const v = doc.data();
-    if (v.caption?.toLowerCase().includes(term)) html += `<div>🎬 ${v.caption}</div>`;
+    if (v.caption?.toLowerCase().includes(term)) html += `<div class="conv-item" data-vid="${doc.id}">🎬 ${v.caption.substring(0,40)}</div>`;
   });
   searchResultsDiv.innerHTML = html;
   document.querySelectorAll('[data-uid]').forEach(el => {
@@ -381,19 +519,8 @@ searchInput.addEventListener('input', async () => {
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
   if (user) {
-    const userRef = doc(db, "users", user.uid);
-    const userSnap = await getDoc(userRef);
-    if (!userSnap.exists()) {
-      await setDoc(userRef, {
-        username: user.displayName || user.email.split('@')[0],
-        email: user.email,
-        avatar: user.photoURL || '',
-        followers: [],
-        following: [],
-        likes: 0,
-        bio: ''
-      });
-    }
+    isAdmin = user.email === 'jasim28v@gmail.com';
+    await ensureUserDocument(user);
     hideModals();
     loadFeed();
     if (pages.profile.classList.contains('active-page')) loadProfile(user.uid);
@@ -402,7 +529,7 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
-// Top Tabs (For You / Following)
+// Top Tabs
 document.querySelectorAll('.tab-item').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
@@ -412,8 +539,7 @@ document.querySelectorAll('.tab-item').forEach(tab => {
   });
 });
 
-// Live icon
 liveIconBtn.onclick = () => alert("Live streaming coming soon");
 
-// initial
+// Initial load
 loadFeed();
