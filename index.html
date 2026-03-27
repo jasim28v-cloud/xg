@@ -1,405 +1,82 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="ar" dir="ltr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>TikTok Clone | Viral Experience</title>
+  <title>TikTok Clone | Admin Dashboard</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-    }
-    body {
-      background: black;
-      font-family: 'Inter', sans-serif;
-      overflow: hidden;
-      height: 100vh;
-      color: white;
-    }
-    .app-container {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      background: #000;
-    }
-    /* Top Bar */
-    .top-bar {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      z-index: 20;
-      background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
-      padding: 12px 16px 8px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .tabs-wrapper {
-      display: flex;
-      gap: 24px;
-    }
-    .tab-item {
-      font-size: 17px;
-      font-weight: 600;
-      color: rgba(255,255,255,0.6);
-      cursor: pointer;
-      padding-bottom: 4px;
-      border-bottom: 2px solid transparent;
-    }
-    .tab-item.active {
-      color: white;
-      border-bottom-color: white;
-    }
-    .action-icons {
-      display: flex;
-      gap: 20px;
-    }
-    .action-icons i {
-      font-size: 22px;
-      cursor: pointer;
-      filter: drop-shadow(0 1px 2px black);
-    }
-    /* Bottom Navigation */
-    .bottom-nav {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: rgba(0,0,0,0.95);
-      backdrop-filter: blur(20px);
-      display: flex;
-      justify-content: space-around;
-      align-items: center;
-      padding: 10px 0 20px;
-      border-top: 0.5px solid rgba(255,255,255,0.1);
-      z-index: 30;
-    }
-    .nav-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      color: #8e8e8e;
-      font-size: 24px;
-    }
-    .nav-item.active {
-      color: white;
-    }
-    .plus-btn {
-      background: #000;
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-top: -8px;
-      box-shadow: 0 0 0 2px #ff3b6f, 0 0 0 5px #00c2ff;
-    }
-    .plus-btn i {
-      font-size: 28px;
-      color: white;
-    }
-    /* Pages Container */
-    .pages-container {
-      flex: 1;
-      margin-top: 60px;
-      margin-bottom: 70px;
-      overflow-y: auto;
-      height: calc(100% - 130px);
-    }
-    .page {
-      display: none;
-      width: 100%;
-      min-height: 100%;
-      background: black;
-    }
-    .page.active-page {
-      display: block;
-    }
-    /* Video Feed */
-    .feed-videos {
-      height: 100%;
-      overflow-y: scroll;
-      scroll-snap-type: y mandatory;
-      scrollbar-width: none;
-    }
-    .feed-videos::-webkit-scrollbar { display: none; }
-    .video-card {
-      scroll-snap-align: start;
-      height: calc(100vh - 130px);
-      position: relative;
-      background: black;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-    video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    .video-overlay {
-      position: absolute;
-      bottom: 80px;
-      right: 12px;
-      left: 12px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-    }
-    .video-info { max-width: 70%; }
-    .video-username { font-weight: bold; font-size: 16px; display: flex; gap: 6px; align-items: center; }
-    .video-caption { font-size: 13px; margin-top: 4px; }
-    .video-actions {
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-      align-items: center;
-    }
-    .action-btn {
-      text-align: center;
-      cursor: pointer;
-    }
-    .action-btn i { font-size: 32px; }
-    .action-btn span { font-size: 12px; display: block; }
-    /* Profile */
-    .profile-header {
-      padding: 20px 16px;
-      text-align: center;
-    }
-    .avatar-large {
-      width: 96px;
-      height: 96px;
-      border-radius: 50%;
-      object-fit: cover;
-      border: 3px solid #ff3b6f;
-    }
-    .stats-row {
-      display: flex;
-      justify-content: center;
-      gap: 32px;
-      margin: 16px 0;
-    }
-    .stat {
-      text-align: center;
-    }
-    .stat-number {
-      font-weight: bold;
-      font-size: 18px;
-    }
-    .stat-label {
-      font-size: 12px;
-      color: #aaa;
-    }
-    .bio {
-      margin: 12px 0;
-    }
-    .action-buttons {
-      display: flex;
-      gap: 12px;
-      justify-content: center;
-      margin: 16px 0;
-    }
-    .btn-outline {
-      background: transparent;
-      border: 1px solid #444;
-      padding: 8px 20px;
-      border-radius: 8px;
-      color: white;
-      font-weight: bold;
-    }
-    .tabs-profile {
-      display: flex;
-      justify-content: space-around;
-      border-top: 0.5px solid #2c2c2c;
-      margin-top: 12px;
-    }
-    .profile-tab {
-      padding: 12px;
-      font-size: 22px;
-      color: #aaa;
-      cursor: pointer;
-    }
-    .profile-tab.active-tab {
-      color: white;
-      border-bottom: 2px solid white;
-    }
-    .video-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 2px;
-      padding: 4px;
-    }
-    .grid-video {
-      aspect-ratio: 3/4;
-      background: #1a1a1a;
-      position: relative;
-    }
-    .grid-video video, .grid-video img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    .play-icon-overlay {
-      position: absolute;
-      bottom: 8px;
-      left: 8px;
-      color: white;
-      font-size: 12px;
-      background: rgba(0,0,0,0.5);
-      padding: 2px 6px;
-      border-radius: 20px;
-    }
-    /* Inbox & DM */
-    .inbox-list {
-      padding: 12px;
-    }
-    .active-status-row {
-      display: flex;
-      gap: 16px;
-      overflow-x: auto;
-      padding: 12px 0;
-      border-bottom: 0.5px solid #222;
-    }
-    .story-circle {
-      text-align: center;
-      width: 60px;
-    }
-    .story-img {
-      width: 52px;
-      height: 52px;
-      border-radius: 50%;
-      border: 2px solid #00c2ff;
-      object-fit: cover;
-    }
-    .conv-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 0;
-      border-bottom: 0.5px solid #222;
-      cursor: pointer;
-    }
-    .conv-img {
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      object-fit: cover;
-    }
-    .conv-info {
-      flex: 1;
-    }
-    .conv-name {
-      font-weight: bold;
-    }
-    .conv-preview {
-      font-size: 12px;
-      color: #aaa;
-    }
-    .chat-header {
-      display: flex;
-      align-items: center;
-      padding: 12px;
-      background: #111;
-      gap: 12px;
-    }
-    /* Modals */
-    .modal-sheet {
-      position: fixed;
-      bottom: -100%;
-      left: 0;
-      right: 0;
-      background: #111;
-      border-radius: 24px 24px 0 0;
-      z-index: 1000;
-      transition: bottom 0.3s ease;
-      max-height: 85vh;
-      overflow-y: auto;
-      padding: 20px;
-    }
-    .modal-overlay {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(0,0,0,0.7);
-      z-index: 999;
-      display: none;
-    }
-    .modal-sheet.open {
-      bottom: 0;
-    }
-    .auth-buttons {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      margin: 20px 0;
-    }
-    .social-btn {
-      background: #2c2c2c;
-      padding: 14px;
-      border-radius: 40px;
-      text-align: center;
-      font-weight: bold;
-      cursor: pointer;
-    }
-    .search-bar {
-      background: #222;
-      border-radius: 30px;
-      padding: 12px 16px;
-      display: flex;
-      gap: 8px;
-    }
-    .category-chips {
-      display: flex;
-      gap: 12px;
-      overflow-x: auto;
-      margin: 16px 0;
-    }
-    .chip {
-      background: #2c2c2c;
-      padding: 8px 16px;
-      border-radius: 20px;
-      font-size: 13px;
-    }
-    /* Upload Modal */
-    .upload-area {
-      border: 2px dashed #444;
-      padding: 30px;
-      text-align: center;
-      border-radius: 20px;
-      margin: 20px 0;
-      cursor: pointer;
-    }
-    input, textarea {
-      width: 100%;
-      padding: 12px;
-      margin: 8px 0;
-      border-radius: 30px;
-      background: #222;
-      border: none;
-      color: white;
-    }
-    button {
-      background: #fe2c55;
-      border: none;
-      padding: 12px;
-      border-radius: 40px;
-      color: white;
-      font-weight: bold;
-      cursor: pointer;
-      width: 100%;
-    }
+    * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-tap-highlight-color:transparent; }
+    body { background:#000; font-family:'Inter',sans-serif; overflow:hidden; height:100vh; color:#fff; }
+    .app-container { position:relative; width:100%; height:100%; display:flex; flex-direction:column; background:#000; }
+    .top-bar { position:fixed; top:0; left:0; right:0; z-index:20; background:linear-gradient(180deg,rgba(0,0,0,0.8) 0%,rgba(0,0,0,0) 100%); padding:12px 16px 8px; display:flex; justify-content:space-between; }
+    .tabs-wrapper { display:flex; gap:24px; }
+    .tab-item { font-size:17px; font-weight:600; color:rgba(255,255,255,0.6); cursor:pointer; padding-bottom:4px; border-bottom:2px solid transparent; }
+    .tab-item.active { color:#fff; border-bottom-color:#fff; }
+    .action-icons { display:flex; gap:20px; }
+    .action-icons i { font-size:22px; cursor:pointer; filter:drop-shadow(0 1px 2px black); }
+    .bottom-nav { position:fixed; bottom:0; left:0; right:0; background:rgba(0,0,0,0.95); backdrop-filter:blur(20px); display:flex; justify-content:space-around; align-items:center; padding:10px 0 20px; border-top:0.5px solid rgba(255,255,255,0.1); z-index:30; }
+    .nav-item { display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; color:#8e8e8e; font-size:24px; transition:0.2s; }
+    .nav-item.active { color:#fff; }
+    .plus-btn { background:#000; width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin-top:-8px; box-shadow:0 0 0 2px #ff3b6f,0 0 0 5px #00c2ff; }
+    .plus-btn i { font-size:28px; color:#fff; }
+    .pages-container { flex:1; margin-top:60px; margin-bottom:70px; overflow-y:auto; height:calc(100% - 130px); scroll-behavior:smooth; }
+    .page { display:none; width:100%; min-height:100%; background:#000; }
+    .page.active-page { display:block; }
+    .feed-videos { height:100%; overflow-y:scroll; scroll-snap-type:y mandatory; scrollbar-width:none; }
+    .feed-videos::-webkit-scrollbar { display:none; }
+    .video-card { scroll-snap-align:start; height:calc(100vh - 130px); position:relative; background:#000; display:flex; justify-content:center; align-items:center; }
+    video { width:100%; height:100%; object-fit:cover; }
+    .video-overlay { position:absolute; bottom:80px; right:12px; left:12px; display:flex; justify-content:space-between; align-items:flex-end; text-shadow:0 1px 3px black; }
+    .video-info { max-width:70%; }
+    .video-username { font-weight:bold; font-size:16px; display:flex; gap:6px; align-items:center; cursor:pointer; }
+    .video-caption { font-size:13px; margin-top:4px; }
+    .video-actions { display:flex; flex-direction:column; gap:24px; align-items:center; }
+    .action-btn { text-align:center; cursor:pointer; }
+    .action-btn i { font-size:32px; }
+    .action-btn span { font-size:12px; display:block; }
+    .modal-sheet { position:fixed; bottom:-100%; left:0; right:0; background:#111; border-radius:24px 24px 0 0; z-index:1000; transition:bottom 0.3s ease; max-height:85vh; overflow-y:auto; padding:20px; }
+    .modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:999; display:none; }
+    .modal-sheet.open { bottom:0; }
+    .auth-buttons { display:flex; flex-direction:column; gap:12px; margin:20px 0; }
+    .social-btn { background:#2c2c2c; padding:14px; border-radius:40px; text-align:center; font-weight:bold; cursor:pointer; }
+    .profile-header { text-align:center; padding:20px; }
+    .avatar-large { width:96px; height:96px; border-radius:50%; object-fit:cover; border:3px solid #ff3b6f; }
+    .stats-row { display:flex; justify-content:center; gap:32px; margin:16px 0; }
+    .stat { text-align:center; }
+    .stat-number { font-weight:bold; font-size:18px; }
+    .stat-label { font-size:12px; color:#aaa; }
+    .bio { margin:12px 0; }
+    .action-buttons { display:flex; gap:12px; justify-content:center; margin:16px 0; }
+    .btn-outline { background:transparent; border:1px solid #444; padding:8px 20px; border-radius:8px; color:#fff; font-weight:bold; cursor:pointer; }
+    .tabs-profile { display:flex; justify-content:space-around; border-top:0.5px solid #2c2c2c; margin-top:12px; }
+    .profile-tab { padding:12px; font-size:22px; color:#aaa; cursor:pointer; }
+    .profile-tab.active-tab { color:#fff; border-bottom:2px solid #fff; }
+    .video-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:2px; padding:4px; }
+    .grid-video { aspect-ratio:3/4; background:#1a1a1a; position:relative; cursor:pointer; }
+    .grid-video video, .grid-video img { width:100%; height:100%; object-fit:cover; }
+    .play-icon-overlay { position:absolute; bottom:8px; left:8px; color:#fff; font-size:12px; background:rgba(0,0,0,0.5); padding:2px 6px; border-radius:20px; }
+    .inbox-list { padding:12px; }
+    .conv-item { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:0.5px solid #222; cursor:pointer; }
+    .conv-img { width:50px; height:50px; border-radius:50%; object-fit:cover; }
+    .conv-info { flex:1; }
+    .conv-name { font-weight:bold; }
+    .conv-preview { font-size:12px; color:#aaa; }
+    .chat-header { display:flex; align-items:center; padding:12px; background:#111; gap:12px; }
+    .search-bar { background:#222; border-radius:30px; padding:12px 16px; display:flex; gap:8px; }
+    .search-bar input { background:transparent; border:none; flex:1; color:#fff; outline:none; }
+    .chip { background:#2c2c2c; padding:8px 16px; border-radius:20px; font-size:13px; display:inline-block; margin:4px; }
+    .admin-panel { background:#0a0a0a; margin-top:20px; padding:16px; border-top:1px solid #333; }
+    .admin-section { margin-bottom:24px; }
+    .admin-section h4 { margin-bottom:12px; color:#fe2c55; }
+    .admin-item { display:flex; justify-content:space-between; align-items:center; padding:8px; background:#1a1a1a; margin-bottom:6px; border-radius:8px; }
+    .admin-item button { background:#fe2c55; border:none; padding:6px 12px; border-radius:20px; color:#fff; cursor:pointer; font-size:12px; }
+    input, textarea { width:100%; padding:12px; margin:8px 0; border-radius:30px; background:#222; border:none; color:#fff; }
+    button { background:#fe2c55; border:none; padding:12px; border-radius:40px; color:#fff; font-weight:bold; cursor:pointer; width:100%; }
+    .upload-area { border:2px dashed #444; padding:30px; text-align:center; border-radius:20px; margin:20px 0; cursor:pointer; }
+    .loading { text-align:center; padding:20px; color:#aaa; }
+    @media (max-width:500px) { .action-icons i { font-size:20px; } }
   </style>
 </head>
 <body>
@@ -415,8 +92,8 @@
     </div>
   </div>
   <div class="pages-container" id="pagesContainer">
-    <div class="page active-page" id="homePage"><div class="feed-videos" id="feedContainer"></div></div>
-    <div class="page" id="friendsPage"><div class="feed-videos" id="friendsFeedContainer"></div></div>
+    <div class="page active-page" id="homePage"><div class="feed-videos" id="feedContainer"><div class="loading">Loading videos...</div></div></div>
+    <div class="page" id="friendsPage"><div class="feed-videos" id="friendsFeedContainer"><div class="loading">Loading...</div></div></div>
     <div class="page" id="inboxPage"><div id="inboxContent"></div></div>
     <div class="page" id="profilePage"></div>
   </div>
@@ -435,8 +112,6 @@
   <h3 style="text-align:center">Join TikTok</h3>
   <div class="auth-buttons">
     <div class="social-btn" id="googleSignIn"><i class="fab fa-google"></i> Continue with Google</div>
-    <div class="social-btn" id="facebookSignIn" style="opacity:0.6"><i class="fab fa-facebook"></i> Facebook (demo)</div>
-    <div class="social-btn" id="appleSignIn" style="opacity:0.6"><i class="fab fa-apple"></i> Apple (demo)</div>
     <div class="social-btn" id="emailAuthBtn"><i class="fas fa-envelope"></i> Use email / username</div>
   </div>
   <div style="text-align:center; margin-top:12px"><span id="toggleAuthMode" style="color:#00c2ff">Create new account</span></div>
@@ -444,11 +119,6 @@
     <input type="email" id="authEmail" placeholder="Email">
     <input type="password" id="authPassword" placeholder="Password">
     <button id="submitAuthBtn">Continue</button>
-  </div>
-  <div id="interestsSheet" style="display:none; margin-top:16px">
-    <p>What are you into?</p>
-    <div style="display:flex; gap:12px; flex-wrap:wrap"><span class="chip">Comedy</span><span class="chip">Gaming</span><span class="chip">Sports</span></div>
-    <button id="skipInterests" style="background:#333; margin-top:12px">Skip</button>
   </div>
 </div>
 
@@ -465,7 +135,6 @@
 
 <div id="searchModal" class="modal-sheet">
   <div class="search-bar"><i class="fas fa-search"></i><input type="text" id="searchInput" placeholder="Search users, videos..."></div>
-  <div class="category-chips"><span class="chip">Top</span><span class="chip">Users</span><span class="chip">Videos</span></div>
   <div id="searchResults"></div>
 </div>
 
