@@ -115,7 +115,7 @@ function addHashtags(text) {
 }
 function searchHashtag(tag) { document.getElementById('searchInput').value = '#' + tag; openSearch(); searchAll(); }
 
-// ========== عرض المنشورات (جميع المنشورات، بدون تصفية) ==========
+// ========== عرض المنشورات ==========
 db.ref('posts').on('value', (s) => {
     const data = s.val();
     if (!data) { allPosts = []; renderFeed(); return; }
@@ -130,13 +130,14 @@ function renderFeed() {
     if (!container) return;
     container.innerHTML = '';
     if (allPosts.length === 0) { container.innerHTML = '<div class="loading">✨ لا توجد منشورات بعد</div>'; return; }
-    // عرض جميع المنشورات لجميع المستخدمين (لا نستخدم تصفية)
-    allPosts.forEach(post => {
+    const followingIds = currentUserData?.following ? Object.keys(currentUserData.following) : [];
+    const feedPosts = allPosts.filter(p => followingIds.includes(p.sender) || p.sender === currentUser?.uid);
+    feedPosts.forEach(post => {
         const user = allUsers[post.sender] || { username: post.senderName || 'user', avatarUrl: '' };
         const isLiked = post.likedBy && post.likedBy[currentUser?.uid];
         const isFollowing = currentUserData?.following && currentUserData.following[post.sender];
         const mediaHtml = post.mediaType === 'video' 
-            ? `<div class="media-container"><video class="post-media" controls><source src="${post.mediaUrl}" type="video/mp4"></video><div class="video-watermark"><i class="fas fa-heart"></i> instagrami</div></div>`
+            ? `<video class="post-media" controls><source src="${post.mediaUrl}" type="video/mp4"></video>`
             : `<img class="post-media" src="${post.mediaUrl}" alt="post">`;
         const caption = addHashtags(post.caption || '');
         const commentsCount = post.comments ? Object.keys(post.comments).length : 0;
@@ -499,4 +500,4 @@ auth.onAuthStateChanged(async (user) => {
         document.getElementById('mainApp').style.display = 'none';
     }
 });
-console.log('✅ instagrami Ready');
+console.log('✅ ECHO Platform Ready');
