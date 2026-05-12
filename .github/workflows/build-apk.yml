@@ -1,56 +1,12 @@
-name: 👑 Build GKOM APK
-
-on:
-  push:
-    tags: ['v*']
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
+name: Build APK
+on: [push]
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: 🔧 Generate Files
-        run: python scraper.py
-
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: 'platforms;android-34 build-tools;34.0.0'
-
-      - name: 📦 Copy Files
-        run: |
-          mkdir -p android-project/app/src/main/assets/www
-          cp *.html *.js android-project/app/src/main/assets/www/
-
-      - name: 🔨 Build APK
-        run: |
-          cd android-project
-          chmod +x gradlew
-          ls -la gradlew
-          ./gradlew assembleRelease --no-daemon
-
-      - name: 🔑 Sign APK
-        run: |
-          keytool -genkey -v -keystore key.jks -alias gkom -keyalg RSA -keysize 2048 -validity 10000 -storepass gkom2026 -keypass gkom2026 -dname "CN=GKOM"
-          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks key.jks --ks-pass pass:gkom2026 --out GKOM.apk android-project/app/build/outputs/apk/release/app-release-unsigned.apk
-
-      - name: 📤 Upload APK
-        uses: softprops/action-gh-release@v2
-        with:
-          files: "GKOM.apk"
-          name: "👑 GKOM APK"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-java@v3
+        with: { java-version: '17', distribution: 'temurin' }
+      - run: chmod +x gradlew && ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v3
+        with: { name: app.apk, path: app/build/outputs/apk/debug/app-debug.apk }
