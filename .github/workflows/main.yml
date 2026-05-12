@@ -1,0 +1,73 @@
+name: 👑 GKOM - Auto Deploy
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'scraper.py'
+      - '.github/workflows/main.yml'
+  workflow_dispatch:
+    inputs:
+      deploy_note:
+        description: '📝 وصف النشر'
+        required: false
+        default: '👑 GKOM Golden Update'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    name: 🚀 Generate & Deploy
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🐍 Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 🔧 Run scraper.py
+        run: |
+          echo "👑 بدء توليد GKOM..."
+          python scraper.py
+          echo "✅ تم التوليد بنجاح"
+
+      - name: 📊 Build Summary
+        run: |
+          echo "╔════════════════════════════════╗"
+          echo "║  👑 GKOM BUILD SUMMARY        ║"
+          echo "╠════════════════════════════════╣"
+          echo "║  📁 HTML:  $(ls -1 *.html 2>/dev/null | wc -l) files"
+          echo "║  📁 JS:    $(ls -1 *.js 2>/dev/null | wc -l) files"
+          echo "║  📊 Lines: $(cat *.html *.js 2>/dev/null | wc -l)"
+          echo "╚════════════════════════════════╝"
+
+      - name: 🚀 Deploy to GitHub
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "👑 GKOM - Auto Deploy [skip ci]"
+          commit_author: "GKOM Bot 🤖 <actions@github.com>"
+          file_pattern: '*.html *.js android-project/'
+          push_options: '--force'
+
+  notify:
+    name: 📢 Deploy Status
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: ✅ Final Status
+        run: |
+          if [ "${{ needs.build-and-deploy.result }}" == "success" ]; then
+            echo "🟢 GKOM Deployed Successfully! 👑"
+          else
+            echo "🔴 Deploy Failed - Check Logs!"
+            exit 1
+          fi
