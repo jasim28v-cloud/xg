@@ -1,73 +1,128 @@
-name: 👑 GKOM - Auto Deploy
+صديقي البطل❤️ هل اضع هاذه
+name: 🖤 MTNAKA 2026 - Auto Deploy
 
 on:
   push:
     branches: [main, master]
-    paths:
-      - 'scraper.py'
-      - '.github/workflows/main.yml'
   workflow_dispatch:
     inputs:
-      deploy_note:
-        description: '📝 وصف النشر'
+      deploy_message:
+        description: 'وصف النشر'
         required: false
-        default: '👑 GKOM Golden Update'
+        default: '🖤 MTNAKA Auto Deploy'
 
 permissions:
   contents: write
 
 jobs:
-  build-and-deploy:
-    name: 🚀 Generate & Deploy
+  generate-and-deploy:
     runs-on: ubuntu-latest
     
     steps:
-      - name: 📥 Checkout Repository
+      # ═══════════════════════════════════════
+      # 🖤 الخطوة 1: سحب المستودع
+      # ═══════════════════════════════════════
+      - name: 📥 سحب المستودع
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: 🐍 Setup Python 3.12
+      
+      # ═══════════════════════════════════════
+      # 🖤 الخطوة 2: إعداد Python
+      # ═══════════════════════════════════════
+      - name: 🐍 إعداد Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: 🔧 Run scraper.py
+      
+      # ═══════════════════════════════════════
+      # 🖤 الخطوة 3: تشغيل المولد
+      # ═══════════════════════════════════════
+      - name: 🔧 تشغيل scraper.py لتوليد الملفات
         run: |
-          echo "👑 بدء توليد GKOM..."
+          echo "🖤 بدء توليد MTNAKA..."
           python scraper.py
-          echo "✅ تم التوليد بنجاح"
-
-      - name: 📊 Build Summary
+          echo "✅ تم توليد جميع الملفات"
+      
+      # ═══════════════════════════════════════
+      # 🖤 الخطوة 4: عرض الملفات المنشأة
+      # ═══════════════════════════════════════
+      - name: 📋 عرض الملفات المنشأة
         run: |
-          echo "╔════════════════════════════════╗"
-          echo "║  👑 GKOM BUILD SUMMARY        ║"
-          echo "╠════════════════════════════════╣"
-          echo "║  📁 HTML:  $(ls -1 *.html 2>/dev/null | wc -l) files"
-          echo "║  📁 JS:    $(ls -1 *.js 2>/dev/null | wc -l) files"
-          echo "║  📊 Lines: $(cat *.html *.js 2>/dev/null | wc -l)"
-          echo "╚════════════════════════════════╝"
-
-      - name: 🚀 Deploy to GitHub
+          echo ""
+          echo "╔══════════════════════════════════════╗"
+          echo "║  🖤 MTNAKA - ملفات المنشأة  ║"
+          echo "╚══════════════════════════════════════╝"
+          echo ""
+          echo "📁 الملفات:"
+          ls -la *.html *.js 2>/dev/null || echo "  ⚠️ لا توجد ملفات بعد"
+          echo ""
+          echo "📊 إحصائيات:"
+          echo "  • HTML files: $(ls -1 *.html 2>/dev/null | wc -l)"
+          echo "  • JS files: $(ls -1 *.js 2>/dev/null | wc -l)"
+          echo "  • Total lines: $(cat *.html *.js 2>/dev/null | wc -l)"
+          echo ""
+      
+      # ═══════════════════════════════════════
+      # 🖤 الخطوة 5: نشر الملفات
+      # ═══════════════════════════════════════
+      - name: 🚀 رفع الملفات إلى GitHub
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "👑 GKOM - Auto Deploy [skip ci]"
-          commit_author: "GKOM Bot 🤖 <actions@github.com>"
-          file_pattern: '*.html *.js android-project/'
+          commit_message: "🖤 MTNAKA 2026 - Auto Deploy [skip ci]"
+          commit_author: "MTNAKA Bot 🤖 <actions@github.com>"
+          commit_user_email: "actions@github.com"
+          commit_user_name: "MTNAKA Bot"
+          
+          # رفع جميع ملفات HTML و JS
+          file_pattern: '*.html *.js'
+          
+          # خيارات إضافية
           push_options: '--force'
+          skip_dirty_check: false
+          skip_fetch: false
+      
+      # ═══════════════════════════════════════
+      # 🖤 الخطوة 6: تأكيد النشر
+      # ═══════════════════════════════════════
+      - name: ✅ تأكيد النشر الناجح
+        run: |
+          echo ""
+          echo "╔════════════════════════════════════════════╗"
+          echo "║                                            ║"
+          echo "║  🖤  MTNAKA 2026                           ║"
+          echo "║  ✅  تم النشر بنجاح!                       ║"
+          echo "║                                            ║"
+          echo "║  📂  الملفات المنشورة:                     ║"
+          echo "║     • auth.html                            ║"
+          echo "║     • index.html                           ║"
+          echo "║     • profile.html                         ║"
+          echo "║     • upload.html                          ║"
+          echo "║     • chat.html                            ║"
+          echo "║     • explore.html                         ║"
+          echo "║     • notifications.html                   ║"
+          echo "║     • settings.html                        ║"
+          echo "║     • firebase-config.js                   ║"
+          echo "║                                            ║"
+          echo "║  🔗 رابط المستودع:                         ║"
+          echo "║     ${{ github.server_url }}/${{ github.repository }}"
+          echo "║                                            ║"
+          echo "╚════════════════════════════════════════════╝"
+          echo ""
 
+  # ═══════════════════════════════════════════════
+  # 🖤 Job 2: إرسال إشعار (اختياري)
+  # ═══════════════════════════════════════════════
   notify:
-    name: 📢 Deploy Status
-    needs: build-and-deploy
+    needs: generate-and-deploy
     runs-on: ubuntu-latest
     if: always()
     
     steps:
-      - name: ✅ Final Status
+      - name: 📊 ملخص النشر
         run: |
-          if [ "${{ needs.build-and-deploy.result }}" == "success" ]; then
-            echo "🟢 GKOM Deployed Successfully! 👑"
+          if [ "${{ needs.generate-and-deploy.result }}" == "success" ]; then
+            echo "🟢 النشر نجح! 🖤"
           else
-            echo "🔴 Deploy Failed - Check Logs!"
-            exit 1
+            echo "🔴 النشر فشل!"
           fi
