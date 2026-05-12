@@ -1,5 +1,4 @@
-صديقي البطل❤️ هل اضع هاذه
-name: 🖤 MTNAKA 2026 - Auto Deploy
+name: 🌹 ROSE SPHERE - Auto Deploy
 
 on:
   push:
@@ -9,7 +8,7 @@ on:
       deploy_message:
         description: 'وصف النشر'
         required: false
-        default: '🖤 MTNAKA Auto Deploy'
+        default: '🌹 Rose Sphere Auto Deploy'
 
 permissions:
   contents: write
@@ -20,7 +19,7 @@ jobs:
     
     steps:
       # ═══════════════════════════════════════
-      # 🖤 الخطوة 1: سحب المستودع
+      # 🌹 الخطوة 1: سحب المستودع
       # ═══════════════════════════════════════
       - name: 📥 سحب المستودع
         uses: actions/checkout@v4
@@ -28,7 +27,7 @@ jobs:
           fetch-depth: 0
       
       # ═══════════════════════════════════════
-      # 🖤 الخطوة 2: إعداد Python
+      # 🌹 الخطوة 2: إعداد Python
       # ═══════════════════════════════════════
       - name: 🐍 إعداد Python 3.12
         uses: actions/setup-python@v5
@@ -36,22 +35,22 @@ jobs:
           python-version: '3.12'
       
       # ═══════════════════════════════════════
-      # 🖤 الخطوة 3: تشغيل المولد
+      # 🌹 الخطوة 3: تشغيل المولد
       # ═══════════════════════════════════════
       - name: 🔧 تشغيل scraper.py لتوليد الملفات
         run: |
-          echo "🖤 بدء توليد MTNAKA..."
+          echo "🌹 بدء توليد Rose Sphere..."
           python scraper.py
           echo "✅ تم توليد جميع الملفات"
       
       # ═══════════════════════════════════════
-      # 🖤 الخطوة 4: عرض الملفات المنشأة
+      # 🌹 الخطوة 4: عرض الملفات المنشأة
       # ═══════════════════════════════════════
       - name: 📋 عرض الملفات المنشأة
         run: |
           echo ""
           echo "╔══════════════════════════════════════╗"
-          echo "║  🖤 MTNAKA - ملفات المنشأة  ║"
+          echo "║  🌹 ROSE SPHERE - ملفات المنشأة     ║"
           echo "╚══════════════════════════════════════╝"
           echo ""
           echo "📁 الملفات:"
@@ -64,15 +63,15 @@ jobs:
           echo ""
       
       # ═══════════════════════════════════════
-      # 🖤 الخطوة 5: نشر الملفات
+      # 🌹 الخطوة 5: نشر الملفات
       # ═══════════════════════════════════════
       - name: 🚀 رفع الملفات إلى GitHub
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🖤 MTNAKA 2026 - Auto Deploy [skip ci]"
-          commit_author: "MTNAKA Bot 🤖 <actions@github.com>"
+          commit_message: "🌹 Rose Sphere - Auto Deploy [skip ci]"
+          commit_author: "Rose Sphere Bot 🤖 <actions@github.com>"
           commit_user_email: "actions@github.com"
-          commit_user_name: "MTNAKA Bot"
+          commit_user_name: "Rose Sphere Bot"
           
           # رفع جميع ملفات HTML و JS
           file_pattern: '*.html *.js'
@@ -83,14 +82,14 @@ jobs:
           skip_fetch: false
       
       # ═══════════════════════════════════════
-      # 🖤 الخطوة 6: تأكيد النشر
+      # 🌹 الخطوة 6: تأكيد النشر
       # ═══════════════════════════════════════
       - name: ✅ تأكيد النشر الناجح
         run: |
           echo ""
           echo "╔════════════════════════════════════════════╗"
           echo "║                                            ║"
-          echo "║  🖤  MTNAKA 2026                           ║"
+          echo "║  🌹  ROSE SPHERE v3.0                     ║"
           echo "║  ✅  تم النشر بنجاح!                       ║"
           echo "║                                            ║"
           echo "║  📂  الملفات المنشورة:                     ║"
@@ -111,7 +110,7 @@ jobs:
           echo ""
 
   # ═══════════════════════════════════════════════
-  # 🖤 Job 2: إرسال إشعار (اختياري)
+  # 🌹 Job 2: إرسال إشعار
   # ═══════════════════════════════════════════════
   notify:
     needs: generate-and-deploy
@@ -122,7 +121,7 @@ jobs:
       - name: 📊 ملخص النشر
         run: |
           if [ "${{ needs.generate-and-deploy.result }}" == "success" ]; then
-            echo "🟢 النشر نجح! 🖤"
+            echo "🟢 النشر نجح! 🌹 ROSE SPHERE v3.0 جاهز ✨"
           else
-            echo "🔴 النشر فشل!"
+            echo "🔴 النشر فشل! راجع الأخطاء"
           fi
