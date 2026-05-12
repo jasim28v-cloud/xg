@@ -2,126 +2,55 @@ name: 👑 Build GKOM APK
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
-    inputs:
-      version_name:
-        description: '📱 Version Name'
-        required: false
-        default: '1.0.0'
 
 permissions:
   contents: write
 
 jobs:
-  build-apk:
-    name: 📱 Build Golden APK
+  build:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: 📥 Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 🐍 Setup Python 3.12
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: 🔧 Generate Web Files
-        run: |
-          echo "👑 Generating GKOM Files..."
-          python scraper.py
-          echo "✅ Files Generated"
+      - name: 🔧 Generate Files
+        run: python scraper.py
 
-      - name: ☕ Setup Java 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: 🔧 Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v3
         with:
           packages: 'platforms;android-34 build-tools;34.0.0'
 
-      - name: 📦 Prepare Assets
+      - name: 📦 Copy Files
         run: |
-          echo "📦 Copying web files to assets..."
           mkdir -p android-project/app/src/main/assets/www
           cp *.html *.js android-project/app/src/main/assets/www/
-          echo "✅ Assets Ready"
 
-      - name: 🔨 Build APK with Gradle
+      - name: 🔨 Build APK
         run: |
-          echo "🔨 Building APK..."
           cd android-project
           chmod +x gradlew
-          ./gradlew assembleRelease
-          echo "✅ Build Complete"
+          ls -la gradlew
+          ./gradlew assembleRelease --no-daemon
 
       - name: 🔑 Sign APK
         run: |
-          echo "🔑 Signing APK..."
-          keytool -genkey -v \
-            -keystore release-key.jks \
-            -alias gkom \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -storepass gkom2026 \
-            -keypass gkom2026 \
-            -dname "CN=GKOM, OU=Golden, O=GKOM, L=World"
-          
-          $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
-            --ks release-key.jks \
-            --ks-pass pass:gkom2026 \
-            --out GKOM-Golden-Release.apk \
-            android-project/app/build/outputs/apk/release/app-release-unsigned.apk
-          
-          echo "✅ APK Signed Successfully"
+          keytool -genkey -v -keystore key.jks -alias gkom -keyalg RSA -keysize 2048 -validity 10000 -storepass gkom2026 -keypass gkom2026 -dname "CN=GKOM"
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks key.jks --ks-pass pass:gkom2026 --out GKOM.apk android-project/app/build/outputs/apk/release/app-release-unsigned.apk
 
-      - name: 📊 APK Info
-        run: |
-          echo "╔════════════════════════════════╗"
-          echo "║  👑 GKOM APK READY            ║"
-          echo "╠════════════════════════════════╣"
-          echo "║  📱 File: GKOM-Golden-Release.apk"
-          echo "║  📏 Size: $(du -sh GKOM-Golden-Release.apk | cut -f1)"
-          echo "╚════════════════════════════════╝"
-
-      - name: 📤 Upload to Release
+      - name: 📤 Upload APK
         uses: softprops/action-gh-release@v2
         with:
-          files: "GKOM-Golden-Release.apk"
-          name: "👑 GKOM v${{ github.ref_name || inputs.version_name }}"
-          body: |
-            ## 👑 GKOM - Golden Ultra Edition
-            
-            ### 📱 تطبيق أندرويد حقيقي
-            
-            | الخاصية | القيمة |
-            |---------|--------|
-            | **الإصدار** | v${{ github.ref_name || inputs.version_name }} |
-            | **Firebase** | gkom-604f1 |
-            | **Cloudinary** | dshgbhw4h |
-            | **Admin** | jasim28v@gmail.com |
-            
-            ### ✨ المميزات:
-            - ✅ تطبيق Native حقيقي
-            - ✅ تصميم ذهبي فاخر
-            - ✅ مشغل فيديو داخلي
-            - ✅ نظام إشعارات كامل
-            - ✅ لوحة تحكم أدمن
-            
-            ### 📲 التثبيت:
-            1. حمل الملف من الأسفل
-            2. ثبت على جهازك
-            3. استمتع! 👑
-          draft: false
-          prerelease: false
+          files: "GKOM.apk"
+          name: "👑 GKOM APK"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: ✅ Complete
-        run: echo "🎉 GKOM APK Published Successfully! 👑"
