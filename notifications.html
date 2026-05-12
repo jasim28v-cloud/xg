@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>👑 MNAENCA | إشعارات</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#d4a017">
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root{--accent:#d4a017;--border:rgba(212,160,23,0.12);--bg:#0a0500}
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:#fff;min-height:100vh;overflow-y:auto}
+        .header{display:flex;align-items:center;gap:12px;padding:16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(10,5,0,0.8);backdrop-filter:blur(20px);z-index:10}
+        .btn-back{background:rgba(212,160,23,0.1);border:1px solid var(--border);width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;font-size:16px}
+        .notif-item{display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);align-items:center}
+        .notif-icon{width:40px;height:40px;border-radius:50%;background:rgba(212,160,23,0.1);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--accent)}
+        .spinner{width:32px;height:32px;border:3px solid rgba(212,160,23,0.2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;margin:30px auto}
+        @keyframes spin{to{transform:rotate(360deg)}}
+    </style>
+</head>
+<body>
+<div class="header"><button class="btn-back" onclick="window.location.href='index.html'"><i class="fas fa-arrow-right"></i></button><h2><i class="fas fa-bell"></i> الإشعارات</h2></div>
+<div id="notifsList"><div class="spinner"></div></div>
+<script src="firebase-config.js"></script>
+<script>
+    let currentUser=null;
+    auth.onAuthStateChanged(async u=>{if(!u){window.location.href='auth.html';return}currentUser=u;loadNotifs()});
+    async function loadNotifs(){
+        const snap=await db.ref('notifications/'+currentUser.uid).once('value');
+        const ns=snap.val()||{};
+        const c=document.getElementById('notifsList');
+        const items=Object.values(ns).reverse();
+        if(!items.length){c.innerHTML='<div style="text-align:center;opacity:0.5;padding:40px"><i class="fas fa-bell" style="font-size:48px;color:#d4a017;margin-bottom:12px;display:block"></i><p>لا توجد إشعارات</p></div>';return}
+        c.innerHTML=items.map(n=>`<div class="notif-item"><div class="notif-icon"><i class="fas fa-bell"></i></div><div><div style="font-weight:600">${n.from||'مستخدم'}</div><div style="font-size:12px;opacity:0.6;margin-top:2px">${n.msg||''}</div></div></div>`).join('');
+    }
+</script>
+</body>
+</html>
