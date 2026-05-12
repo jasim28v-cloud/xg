@@ -1,0 +1,127 @@
+name: 🌹 ROSE SPHERE - Auto Deploy
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      deploy_message:
+        description: 'وصف النشر'
+        required: false
+        default: '🌹 Rose Sphere Auto Deploy'
+
+permissions:
+  contents: write
+
+jobs:
+  generate-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # ═══════════════════════════════════════
+      # 🌹 الخطوة 1: سحب المستودع
+      # ═══════════════════════════════════════
+      - name: 📥 سحب المستودع
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      # ═══════════════════════════════════════
+      # 🌹 الخطوة 2: إعداد Python
+      # ═══════════════════════════════════════
+      - name: 🐍 إعداد Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      # ═══════════════════════════════════════
+      # 🌹 الخطوة 3: تشغيل المولد
+      # ═══════════════════════════════════════
+      - name: 🔧 تشغيل scraper.py لتوليد الملفات
+        run: |
+          echo "🌹 بدء توليد Rose Sphere..."
+          python scraper.py
+          echo "✅ تم توليد جميع الملفات"
+      
+      # ═══════════════════════════════════════
+      # 🌹 الخطوة 4: عرض الملفات المنشأة
+      # ═══════════════════════════════════════
+      - name: 📋 عرض الملفات المنشأة
+        run: |
+          echo ""
+          echo "╔══════════════════════════════════════╗"
+          echo "║  🌹 ROSE SPHERE - ملفات المنشأة     ║"
+          echo "╚══════════════════════════════════════╝"
+          echo ""
+          echo "📁 الملفات:"
+          ls -la *.html *.js 2>/dev/null || echo "  ⚠️ لا توجد ملفات بعد"
+          echo ""
+          echo "📊 إحصائيات:"
+          echo "  • HTML files: $(ls -1 *.html 2>/dev/null | wc -l)"
+          echo "  • JS files: $(ls -1 *.js 2>/dev/null | wc -l)"
+          echo "  • Total lines: $(cat *.html *.js 2>/dev/null | wc -l)"
+          echo ""
+      
+      # ═══════════════════════════════════════
+      # 🌹 الخطوة 5: نشر الملفات
+      # ═══════════════════════════════════════
+      - name: 🚀 رفع الملفات إلى GitHub
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🌹 Rose Sphere - Auto Deploy [skip ci]"
+          commit_author: "Rose Sphere Bot 🤖 <actions@github.com>"
+          commit_user_email: "actions@github.com"
+          commit_user_name: "Rose Sphere Bot"
+          
+          # رفع جميع ملفات HTML و JS
+          file_pattern: '*.html *.js'
+          
+          # خيارات إضافية
+          push_options: '--force'
+          skip_dirty_check: false
+          skip_fetch: false
+      
+      # ═══════════════════════════════════════
+      # 🌹 الخطوة 6: تأكيد النشر
+      # ═══════════════════════════════════════
+      - name: ✅ تأكيد النشر الناجح
+        run: |
+          echo ""
+          echo "╔════════════════════════════════════════════╗"
+          echo "║                                            ║"
+          echo "║  🌹  ROSE SPHERE v3.0                     ║"
+          echo "║  ✅  تم النشر بنجاح!                       ║"
+          echo "║                                            ║"
+          echo "║  📂  الملفات المنشورة:                     ║"
+          echo "║     • auth.html                            ║"
+          echo "║     • index.html                           ║"
+          echo "║     • profile.html                         ║"
+          echo "║     • upload.html                          ║"
+          echo "║     • chat.html                            ║"
+          echo "║     • explore.html                         ║"
+          echo "║     • notifications.html                   ║"
+          echo "║     • settings.html                        ║"
+          echo "║     • firebase-config.js                   ║"
+          echo "║                                            ║"
+          echo "║  🔗 رابط المستودع:                         ║"
+          echo "║     ${{ github.server_url }}/${{ github.repository }}"
+          echo "║                                            ║"
+          echo "╚════════════════════════════════════════════╝"
+          echo ""
+
+  # ═══════════════════════════════════════════════
+  # 🌹 Job 2: إرسال إشعار
+  # ═══════════════════════════════════════════════
+  notify:
+    needs: generate-and-deploy
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: 📊 ملخص النشر
+        run: |
+          if [ "${{ needs.generate-and-deploy.result }}" == "success" ]; then
+            echo "🟢 النشر نجح! 🌹 ROSE SPHERE v3.0 جاهز ✨"
+          else
+            echo "🔴 النشر فشل! راجع الأخطاء"
+          fi
