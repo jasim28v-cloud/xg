@@ -1,0 +1,2 @@
+plugins{id'com.android.application'}android{namespace'com.gkom.app'compileSdk34 defaultConfig{applicationId"com.gkom.app"minSdk21 targetSdk34 versionCode1 versionName"1.0.0"}buildTypes{release{minifyEnabled false}}}dependencies{implementation'androidx.appcompat:appcompat:1.6.1'
+implementation'com.google.android.material:material:1.9.0'}
