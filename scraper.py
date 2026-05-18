@@ -1,39 +1,67 @@
 #!/usr/bin/env python3
 """
-Professional APK Builder - Rose Sphere
-يسحب ملفات الموقع ويبني APK حقيقي باستخدام Android SDK
+ينشئ مشروع Android كامل مع ملفات الموقع جاهز لبناء APK
 """
-import os, sys, json, shutil, logging, subprocess, argparse, time
+import os, sys, shutil, logging, argparse, json
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('APKBuilder')
+logger = logging.getLogger('AndroidProjectCreator')
 
-# قائمة ملفات موقعك
+# ملفات موقعك
 SITE_FILES = [
     'index.html', 'auth.html', 'chat.html', 'explore.html',
     'profile.html', 'settings.html', 'notifications.html', 'upload.html',
-    'firebase-config.js', 'service-worker.js', 'server.js'
+    'firebase-config.js', 'service-worker.js', 'server.js', 'package.json'
 ]
 
-class ProfessionalAPKBuilder:
-    def __init__(self):
+class AndroidProjectCreator:
+    def __init__(self, config: dict):
+        self.config = config
         self.project_dir = Path('android_project')
-        self.output_dir = Path('output')
-        self.output_dir.mkdir(exist_ok=True)
+        self.package_path = config['package'].replace('.', '/')
         
-    def setup_android_project(self, config: Dict):
-        """إنشاء مشروع أندرويد كامل"""
-        logger.info("📁 إنشاء مشروع أندرويد...")
+    def create(self):
+        """إنشاء مشروع Android كامل"""
+        logger.info("🚀 إنشاء مشروع Android...")
         
         if self.project_dir.exists():
             shutil.rmtree(self.project_dir)
         
-        # هيكل المشروع
+        # 1. هيكل المجلدات
+        self._create_directories()
+        
+        # 2. ملفات Gradle
+        self._create_settings_gradle()
+        self._create_project_build_gradle()
+        self._create_app_build_gradle()
+        self._create_gradle_properties()
+        
+        # 3. AndroidManifest
+        self._create_manifest()
+        
+        # 4. كود Java
+        self._create_main_activity()
+        
+        # 5. موارد Android
+        self._create_layouts()
+        self._create_values()
+        self._create_drawables()
+        
+        # 6. نسخ ملفات الموقع
+        self._copy_site_files()
+        
+        # 7. تقرير
+        self._create_report()
+        
+        logger.info("✅ تم إنشاء مشروع Android بنجاح!")
+        return str(self.project_dir)
+    
+    def _create_directories(self):
+        """إنشاء هيكل المجلدات"""
         dirs = [
-            'app/src/main/java/com/rosesphere/app',
+            f'app/src/main/java/{self.package_path}',
             'app/src/main/res/layout',
             'app/src/main/res/values',
             'app/src/main/res/drawable',
@@ -42,32 +70,103 @@ class ProfessionalAPKBuilder:
             'app/src/main/res/mipmap-mdpi',
             'app/src/main/res/mipmap-xhdpi',
             'app/src/main/res/mipmap-xxhdpi',
+            'app/src/main/res/mipmap-xxxhdpi',
             'gradle/wrapper'
         ]
         for d in dirs:
             (self.project_dir / d).mkdir(parents=True, exist_ok=True)
     
-    def create_manifest(self, config: Dict):
-        """إنشاء AndroidManifest.xml"""
-        manifest = f'''<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="{config['package']}">
+    def _create_settings_gradle(self):
+        """settings.gradle"""
+        content = f'''pluginManagement {{
+    repositories {{
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }}
+}}
+dependencyResolution {{
+    repositories {{
+        google()
+        mavenCentral()
+    }}
+}}
+rootProject.name = "{self.config['name'].replace(' ', '')}"
+include ':app'
+'''
+        self._write('settings.gradle', content)
+    
+    def _create_project_build_gradle(self):
+        """build.gradle (project)"""
+        content = '''plugins {
+    id 'com.android.application' version '8.2.0' apply false
+}
+'''
+        self._write('build.gradle', content)
+    
+    def _create_app_build_gradle(self):
+        """app/build.gradle"""
+        content = f'''plugins {{
+    id 'com.android.application'
+}}
+
+android {{
+    namespace '{self.config["package"]}'
+    compileSdk 34
+    
+    defaultConfig {{
+        applicationId '{self.config["package"]}'
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName '{self.config["version"]}'
+    }}
+    
+    buildTypes {{
+        release {{
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+        }}
+    }}
+    
+    compileOptions {{
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }}
+}}
+'''
+        self._write('app/build.gradle', content)
+    
+    def _create_gradle_properties(self):
+        """gradle.properties"""
+        content = '''org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+android.nonTransitiveRClass=true
+'''
+        self._write('gradle.properties', content)
+    
+    def _create_manifest(self):
+        """app/src/main/AndroidManifest.xml"""
+        content = f'''<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
     
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="{config['name']}"
+        android:label="{self.config['name']}"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:hardwareAccelerated="true">
         
         <activity
-            android:name="com.rosesphere.app.MainActivity"
+            android:name=".{self.config['name'].replace(' ', '')}Activity"
             android:exported="true"
-            android:configChanges="orientation|screenSize">
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -75,13 +174,12 @@ class ProfessionalAPKBuilder:
         </activity>
     </application>
 </manifest>'''
-        
-        with open(self.project_dir / 'app/src/main/AndroidManifest.xml', 'w') as f:
-            f.write(manifest)
+        self._write('app/src/main/AndroidManifest.xml', content)
     
-    def create_main_activity(self):
-        """إنشاء MainActivity.java"""
-        java_code = '''package com.rosesphere.app;
+    def _create_main_activity(self):
+        """MainActivity.java"""
+        app_name = self.config['name'].replace(' ', '')
+        content = f'''package {self.config["package"]};
 
 import android.app.Activity;
 import android.os.Bundle;
@@ -90,44 +188,60 @@ import android.webkit.WebSettings;
 import android.webkit.WebViewClient;
 import android.webkit.WebChromeClient;
 import android.view.KeyEvent;
+import android.view.Window;
+import android.view.WindowManager;
+import android.graphics.Color;
 
-public class MainActivity extends Activity {
+public class {app_name}Activity extends Activity {{
     private WebView webView;
     
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    protected void onCreate(Bundle savedInstanceState) {{
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
         
-        webView = findViewById(R.id.webview);
+        // إخفاء شريط العنوان
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        getWindow().setFlags(
+            WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            WindowManager.LayoutParams.FLAG_FULLSCREEN
+        );
         
+        webView = new WebView(this);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
+        settings.setAllowFileAccessFromFileURLs(true);
+        settings.setAllowUniversalAccessFromFileURLs(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+        settings.setBuiltInZoomControls(true);
+        settings.setDisplayZoomControls(false);
         
         webView.setWebViewClient(new WebViewClient());
         webView.setWebChromeClient(new WebChromeClient());
+        webView.setBackgroundColor(Color.WHITE);
         webView.loadUrl("file:///android_asset/index.html");
-    }
+        
+        setContentView(webView);
+    }}
     
     @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_BACK && webView.canGoBack()) {
+    public boolean onKeyDown(int keyCode, KeyEvent event) {{
+        if (keyCode == KeyEvent.KEYCODE_BACK && webView.canGoBack()) {{
             webView.goBack();
             return true;
-        }
+        }}
         return super.onKeyDown(keyCode, event);
-    }
-}'''
-        
-        with open(self.project_dir / 'app/src/main/java/com/rosesphere/app/MainActivity.java', 'w') as f:
-            f.write(java_code)
+    }}
+}}
+'''
+        self._write(f'app/src/main/java/{self.package_path}/{app_name}Activity.java', content)
     
-    def create_layout(self):
-        """إنشاء layout"""
-        layout = '''<?xml version="1.0" encoding="utf-8"?>
+    def _create_layouts(self):
+        """activity_main.xml"""
+        content = '''<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -138,207 +252,113 @@ public class MainActivity extends Activity {
         android:layout_width="match_parent"
         android:layout_height="match_parent"/>
 </LinearLayout>'''
-        
-        with open(self.project_dir / 'app/src/main/res/layout/activity_main.xml', 'w') as f:
-            f.write(layout)
+        self._write('app/src/main/res/layout/activity_main.xml', content)
     
-    def create_resources(self, config: Dict):
-        """إنشاء ملفات الموارد"""
-        # strings.xml
+    def _create_values(self):
+        """strings.xml, styles.xml, colors.xml"""
         strings = f'''<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">{config['name']}</string>
+    <string name="app_name">{self.config['name']}</string>
 </resources>'''
-        with open(self.project_dir / 'app/src/main/res/values/strings.xml', 'w') as f:
-            f.write(strings)
+        self._write('app/src/main/res/values/strings.xml', strings)
         
-        # styles.xml
         styles = '''<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:statusBarColor">#1a1a2e</item>
+        <item name="android:statusBarColor">@color/colorPrimaryDark</item>
+        <item name="android:navigationBarColor">@color/colorPrimaryDark</item>
     </style>
 </resources>'''
-        with open(self.project_dir / 'app/src/main/res/values/styles.xml', 'w') as f:
-            f.write(styles)
+        self._write('app/src/main/res/values/styles.xml', styles)
+        
+        colors = '''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#1a1a2e</color>
+    <color name="colorPrimaryDark">#16213e</color>
+    <color name="colorAccent">#0f3460</color>
+</resources>'''
+        self._write('app/src/main/res/values/colors.xml', colors)
     
-    def copy_site_files(self):
+    def _create_drawables(self):
+        """ic_launcher.xml"""
+        launcher = '''<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/colorPrimary"/>
+    <foreground android:drawable="@color/colorAccent"/>
+</adaptive-icon>'''
+        self._write('app/src/main/res/drawable/ic_launcher.xml', launcher)
+    
+    def _copy_site_files(self):
         """نسخ ملفات الموقع إلى assets"""
         assets_dir = self.project_dir / 'app/src/main/assets'
         copied = 0
         
+        logger.info("📁 نسخ ملفات الموقع إلى assets...")
         for filename in SITE_FILES:
             src = Path(filename)
             if src.exists():
                 shutil.copy2(src, assets_dir / filename)
-                copied += 1
                 logger.info(f"✅ {filename}")
+                copied += 1
             else:
                 logger.warning(f"⚠️ {filename} غير موجود")
         
-        return copied
+        logger.info(f"📊 تم نسخ {copied} ملف من {len(SITE_FILES)}")
+        
+        # إنشاء index.html افتراضي إذا لم يكن موجوداً
+        if not (assets_dir / 'index.html').exists():
+            self._create_default_index(assets_dir)
     
-    def create_build_files(self, config: Dict):
-        """إنشاء ملفات البناء"""
-        # build.gradle (project)
-        project_gradle = '''buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath 'com.android.tools.build:gradle:8.2.0'
-    }
-}'''
-        with open(self.project_dir / 'build.gradle', 'w') as f:
-            f.write(project_gradle)
+    def _create_default_index(self, assets_dir: Path):
+        """إنشاء صفحة افتراضية"""
+        html_files = list(assets_dir.glob('*.html'))
+        links = ''.join(f'<li><a href="{f.name}">{f.stem}</a></li>' for f in html_files)
         
-        # settings.gradle
-        settings_gradle = '''rootProject.name = "RoseSphere"
-include ':app'
-'''
-        with open(self.project_dir / 'settings.gradle', 'w') as f:
-            f.write(settings_gradle)
-        
-        # app/build.gradle
-        app_gradle = f'''apply plugin: 'com.android.application'
-
-android {{
-    namespace '{config["package"]}'
-    compileSdk 34
+        index = f'''<!DOCTYPE html>
+<html dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{self.config['name']}</title>
+    <style>
+        body {{ font-family: Arial; background: linear-gradient(135deg, #1a1a2e, #16213e); color: white; min-height: 100vh; padding: 20px; }}
+        h1 {{ text-align: center; }}
+        ul {{ list-style: none; max-width: 600px; margin: 20px auto; }}
+        li {{ margin: 10px 0; }}
+        a {{ display: block; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px; color: white; text-decoration: none; }}
+    </style>
+</head>
+<body>
+    <h1>🚀 {self.config['name']}</h1>
+    <ul>{links if links else '<li>لا توجد صفحات</li>'}</ul>
+</body>
+</html>'''
+        with open(assets_dir / 'index.html', 'w', encoding='utf-8') as f:
+            f.write(index)
     
-    defaultConfig {{
-        applicationId "{config['package']}"
-        minSdk 21
-        targetSdk 34
-        versionCode 1
-        versionName "{config['version']}"
-    }}
+    def _create_report(self):
+        """إنشاء تقرير البناء"""
+        report = {
+            'app_name': self.config['name'],
+            'package': self.config['package'],
+            'version': self.config['version'],
+            'created_at': datetime.now().isoformat(),
+            'project_path': str(self.project_dir)
+        }
+        self._write('project_info.json', json.dumps(report, indent=2, ensure_ascii=False))
     
-    buildTypes {{
-        release {{
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
-        }}
-        debug {{
-            debuggable true
-        }}
-    }}
-    
-    compileOptions {{
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }}
-}}
-'''
-        with open(self.project_dir / 'app/build.gradle', 'w') as f:
-            f.write(app_gradle)
-        
-        # gradle.properties
-        props = '''android.useAndroidX=false
-org.gradle.jvmargs=-Xmx2048m
-'''
-        with open(self.project_dir / 'gradle.properties', 'w') as f:
-            f.write(props)
-    
-    def create_keystore(self):
-        """إنشاء مفتاح توقيع"""
-        logger.info("🔑 إنشاء مفتاح التوقيع...")
-        subprocess.run([
-            'keytool', '-genkey', '-v',
-            '-keystore', str(self.project_dir / 'debug.keystore'),
-            '-alias', 'debug',
-            '-keyalg', 'RSA',
-            '-keysize', '2048',
-            '-validity', '10000',
-            '-storepass', 'android',
-            '-keypass', 'android',
-            '-dname', 'CN=RoseSphere, OU=Dev, O=RoseSphere, L=Unknown, ST=Unknown, C=US'
-        ], check=True, capture_output=True)
-    
-    def build_apk(self, config: Dict) -> str:
-        """بناء APK نهائي"""
-        logger.info("🔨 بناء APK...")
-        
-        apk_name = f"{config['name'].replace(' ', '_')}_{config['version']}.apk"
-        apk_path = self.output_dir / apk_name
-        
-        # محاولة البناء باستخدام gradle
-        try:
-            if shutil.which('gradle'):
-                result = subprocess.run(
-                    ['gradle', 'assembleRelease'],
-                    cwd=self.project_dir,
-                    capture_output=True,
-                    text=True
-                )
-                if result.returncode == 0:
-                    # نسخ APK الناتج
-                    built_apk = self.project_dir / 'app/build/outputs/apk/release/app-release-unsigned.apk'
-                    if built_apk.exists():
-                        shutil.copy2(built_apk, apk_path)
-                        logger.info(f"✅ APK: {apk_path}")
-                        return str(apk_path)
-        except Exception as e:
-            logger.warning(f"Gradle build failed: {e}")
-        
-        # خطة بديلة: بناء APK يدوياً بصيغة ZIP
-        return self._manual_apk_build(apk_path, config)
-    
-    def _manual_apk_build(self, apk_path: Path, config: Dict) -> str:
-        """بناء APK يدوي"""
-        logger.info("📦 بناء APK يدوياً...")
-        
-        import zipfile
-        with zipfile.ZipFile(apk_path, 'w', zipfile.ZIP_DEFLATED) as z:
-            # AndroidManifest
-            manifest = self.project_dir / 'app/src/main/AndroidManifest.xml'
-            z.write(manifest, 'AndroidManifest.xml')
-            
-            # Resources
-            res_dir = self.project_dir / 'app/src/main/res'
-            for f in res_dir.rglob('*'):
-                if f.is_file():
-                    z.write(f, 'res/' + str(f.relative_to(res_dir)))
-            
-            # Assets (ملفات الموقع)
-            assets_dir = self.project_dir / 'app/src/main/assets'
-            for f in assets_dir.rglob('*'):
-                if f.is_file():
-                    z.write(f, 'assets/' + str(f.relative_to(assets_dir)))
-        
-        logger.info(f"✅ APK: {apk_path}")
-        return str(apk_path)
-    
-    def build(self, config: Dict) -> str:
-        """تنفيذ عملية البناء الكاملة"""
-        logger.info(f"🚀 بدء بناء {config['name']} v{config['version']}")
-        
-        self.setup_android_project(config)
-        self.create_manifest(config)
-        self.create_main_activity()
-        self.create_layout()
-        self.create_resources(config)
-        
-        files_copied = self.copy_site_files()
-        logger.info(f"📁 تم نسخ {files_copied} ملف إلى assets")
-        
-        self.create_build_files(config)
-        
-        apk_path = self.build_apk(config)
-        
-        if apk_path and os.path.exists(apk_path):
-            size = os.path.getsize(apk_path) / 1024
-            logger.info(f"✅ تم! APK: {apk_path} ({size:.1f} KB)")
-            return apk_path
-        else:
-            raise Exception("فشل بناء APK")
+    def _write(self, relative_path: str, content: str):
+        """كتابة ملف"""
+        path = self.project_dir / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(content)
 
 def main():
-    parser = argparse.ArgumentParser(description='RoseSphere APK Builder')
+    parser = argparse.ArgumentParser(description='إنشاء مشروع Android مع ملفات الموقع')
     parser.add_argument('--name', default='Rose Sphere', help='اسم التطبيق')
     parser.add_argument('--package', default='com.rosesphere.app', help='اسم الحزمة')
-    parser.add_argument('--version', default='1.0.0', help='رقم الإصدار')
+    parser.add_argument('--version', default='1.0.0', help='الإصدار')
     args = parser.parse_args()
     
     config = {
@@ -347,10 +367,19 @@ def main():
         'version': args.version
     }
     
-    builder = ProfessionalAPKBuilder()
-    apk_path = builder.build(config)
+    print("="*50)
+    print("🚀 إنشاء مشروع Android")
+    print("="*50)
+    print(f"📱 الاسم: {config['name']}")
+    print(f"📦 الحزمة: {config['package']}")
+    print(f"📌 الإصدار: {config['version']}")
+    print("="*50)
     
-    print(f'\n📱 APK جاهز: {apk_path}')
+    creator = AndroidProjectCreator(config)
+    project_path = creator.create()
+    
+    print(f"\n✅ تم إنشاء المشروع في: {project_path}")
+    print("\nالخطوة التالية: شغّل apk.yml لبناء APK")
 
 if __name__ == '__main__':
     main()
