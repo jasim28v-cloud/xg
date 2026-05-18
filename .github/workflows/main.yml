@@ -1,23 +1,18 @@
-name: 🌐 Build Offline APK
+name: 🌹 Build Rose Sphere APK
 
 on:
   workflow_dispatch:
     inputs:
-      website_url:
-        description: '🔗 رابط الموقع'
-        required: true
-        type: string
-        default: 'https://xg-6vtg.onrender.com'
       app_name:
-        description: '📱 اسم التطبيق (إنجليزي فقط)'
+        description: '📱 اسم التطبيق'
         required: true
         type: string
-        default: 'XGApp'
+        default: 'RoseSphere'
       package_name:
-        description: '📦 اسم الحزمة (مثال: com.example.app)'
+        description: '📦 اسم الحزمة'
         required: true
         type: string
-        default: 'com.jasim28v.xgapp'
+        default: 'com.rosesphere.app'
       version:
         description: '📌 الإصدار'
         required: false
@@ -25,42 +20,34 @@ on:
         default: '1.0.0'
 
 jobs:
-  build-apk:
+  build:
     runs-on: ubuntu-latest
-    name: 🏗️ بناء APK
-    
     steps:
-      - name: 📥 نسخ المستودع
-        uses: actions/checkout@v4
-
-      - name: 🐍 تثبيت Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
-      - name: 📦 تثبيت الاعتماديات
-        run: |
-          pip install requests beautifulsoup4 lxml html5lib
-
-      - name: 🔨 بناء APK
-        run: |
-          python scraper.py "${{ github.event.inputs.website_url }}" \
-            --name "${{ github.event.inputs.app_name }}" \
-            --package "${{ github.event.inputs.package_name }}" \
-            --version "${{ github.event.inputs.version }}"
-
-      - name: 📤 رفع APK
-        uses: actions/upload-artifact@v4
+      - run: python scraper.py --name "${{ github.event.inputs.app_name }}" --package "${{ github.event.inputs.package_name }}" --version "${{ github.event.inputs.version }}"
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.inputs.app_name }}-v${{ github.event.inputs.version }}
           path: generated_apks/*.apk
-          retention-days: 90
-
-      - name: 🚀 إنشاء Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.event.inputs.version }}-${{ github.run_number }}
           name: "${{ github.event.inputs.app_name }} v${{ github.event.inputs.version }}"
+          body: |
+            ## 🌹 تطبيق Rose Sphere
+            
+            ### 📱 صفحات التطبيق:
+            - الرئيسية | تسجيل الدخول | المحادثة
+            - استكشاف | الملف الشخصي | الإعدادات
+            - الإشعارات | رفع
+            
+            ### ✨ المميزات:
+            - ✅ جميع الصفحات مدمجة
+            - ✅ يدعم Firebase
+            - ✅ Service Worker للعمل offline
           files: generated_apks/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
