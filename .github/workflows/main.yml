@@ -1,38 +1,33 @@
-name: 🌐 Website to Offline APK Builder
+name: 🌐 Build Offline APK
 
 on:
   workflow_dispatch:
     inputs:
       website_url:
-        description: '🔗 رابط الموقع للتحميل الكامل'
+        description: '🔗 رابط الموقع'
         required: true
         type: string
         default: 'https://xg-6vtg.onrender.com'
       app_name:
-        description: '📱 اسم التطبيق'
+        description: '📱 اسم التطبيق (إنجليزي فقط)'
         required: true
         type: string
-        default: 'تطبيقي'
+        default: 'XGApp'
       package_name:
         description: '📦 اسم الحزمة (مثال: com.example.app)'
         required: true
         type: string
-        default: 'com.myapp.webview'
+        default: 'com.jasim28v.xgapp'
       version:
         description: '📌 الإصدار'
         required: false
         type: string
         default: '1.0.0'
-      theme_color:
-        description: '🎨 لون التطبيق'
-        required: false
-        type: string
-        default: '#2196F3'
 
 jobs:
-  build-offline-apk:
+  build-apk:
     runs-on: ubuntu-latest
-    name: 🏗️ بناء APK offline مع ملفات الموقع
+    name: 🏗️ بناء APK
     
     steps:
       - name: 📥 نسخ المستودع
@@ -45,78 +40,27 @@ jobs:
 
       - name: 📦 تثبيت الاعتماديات
         run: |
-          python -m pip install --upgrade pip
           pip install requests beautifulsoup4 lxml html5lib
 
-      - name: 🌐 تحميل الموقع وبناء APK
+      - name: 🔨 بناء APK
         run: |
           python scraper.py "${{ github.event.inputs.website_url }}" \
             --name "${{ github.event.inputs.app_name }}" \
             --package "${{ github.event.inputs.package_name }}" \
-            --version "${{ github.event.inputs.version }}" \
-            --color "${{ github.event.inputs.theme_color }}"
+            --version "${{ github.event.inputs.version }}"
 
-      - name: 📊 عرض الملفات التي تم تحميلها
-        run: |
-          echo "## 📁 الملفات التي تم تحميلها من الموقع" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📄 الموقع: ${{ github.event.inputs.website_url }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ -f "generated_apks/*_build_info.json" ]; then
-            echo "تم تحميل الموقع بنجاح مع جميع موارده" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          echo "### 📱 ملف APK الناتج:" >> $GITHUB_STEP_SUMMARY
-          ls -lh generated_apks/*.apk | awk '{print "- " $NF " (" $5 ")"}' >> $GITHUB_STEP_SUMMARY
-
-      - name: 📤 رفع APK كـ Artifact
+      - name: 📤 رفع APK
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.event.inputs.app_name }}-offline-v${{ github.event.inputs.version }}
-          path: |
-            generated_apks/*.apk
-            generated_apks/*_build_info.json
+          name: ${{ github.event.inputs.app_name }}-v${{ github.event.inputs.version }}
+          path: generated_apks/*.apk
           retention-days: 90
 
-      - name: 🚀 إنشاء Release مع معلومات التحميل
+      - name: 🚀 إنشاء Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.app_name }}-offline-v${{ github.event.inputs.version }}-${{ github.run_number }}
-          name: "${{ github.event.inputs.app_name }} v${{ github.event.inputs.version }} (Offline)"
-          body: |
-            ## 🌐 تطبيق ${{ github.event.inputs.app_name }} - نسخة Offline
-            
-            ### 📱 معلومات التطبيق
-            - **الموقع:** ${{ github.event.inputs.website_url }}
-            - **الإصدار:** ${{ github.event.inputs.version }}
-            - **الحزمة:** ${{ github.event.inputs.package_name }}
-            - **تاريخ البناء:** $(date +"%Y-%m-%d %H:%M:%S")
-            
-            ### ✨ مميزات هذه النسخة
-            - ✅ **يعمل بدون إنترنت** - جميع ملفات الموقع مدمجة
-            - ✅ **سريع التحميل** - لا يحتاج اتصال بالإنترنت
-            - ✅ **يحافظ على التصميم** - CSS و JavaScript مدعومة
-            - ✅ **جميع الصور محملة** - تجربة كاملة offline
-            
-            ### 📥 التحميل والتثبيت
-            1. حمل ملف APK من الأسفل
-            2. افتح الملف على جهاز الأندرويد
-            3. اسمح بالتثبيت من مصادر غير معروفة
-            4. استمتع بتطبيقك الذي يعمل بدون إنترنت!
-            
-            > ⚠️ **تنبيه:** هذا التطبيق يحتوي على نسخة محفوظة من الموقع وقت البناء. للتحديث، قم ببناء نسخة جديدة.
+          tag_name: v${{ github.event.inputs.version }}-${{ github.run_number }}
+          name: "${{ github.event.inputs.app_name }} v${{ github.event.inputs.version }}"
           files: generated_apks/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 📋 ملخص نهائي
-        run: |
-          echo "## ✅ اكتمل بناء APK offline بنجاح!" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| الخاصية | القيمة |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| التطبيق | ${{ github.event.inputs.app_name }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| الموقع | ${{ github.event.inputs.website_url }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| يعمل offline | ✅ نعم |" >> $GITHUB_STEP_SUMMARY
-          echo "| حجم الملف | $(ls -lh generated_apks/*.apk | awk '{print $5}') |" >> $GITHUB_STEP_SUMMARY
