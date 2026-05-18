@@ -1,127 +1,49 @@
-name: 🌹 ROSE SPHERE - Auto Deploy
+name: Build MNAENCA APK
 
 on:
   push:
-    branches: [main, master]
+    branches: [ main ]
   workflow_dispatch:
-    inputs:
-      deploy_message:
-        description: 'وصف النشر'
-        required: false
-        default: '🌹 Rose Sphere Auto Deploy'
-
-permissions:
-  contents: write
 
 jobs:
-  generate-and-deploy:
+  build-apk:
     runs-on: ubuntu-latest
     
     steps:
-      # ═══════════════════════════════════════
-      # 🌹 الخطوة 1: سحب المستودع
-      # ═══════════════════════════════════════
-      - name: 📥 سحب المستودع
+      - name: 📥 جلب الكود
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       
-      # ═══════════════════════════════════════
-      # 🌹 الخطوة 2: إعداد Python
-      # ═══════════════════════════════════════
-      - name: 🐍 إعداد Python 3.12
+      - name: 🐍 تجهيز بايثون
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.10'
       
-      # ═══════════════════════════════════════
-      # 🌹 الخطوة 3: تشغيل المولد
-      # ═══════════════════════════════════════
-      - name: 🔧 تشغيل scraper.py لتوليد الملفات
-        run: |
-          echo "🌹 بدء توليد Rose Sphere..."
-          python scraper.py
-          echo "✅ تم توليد جميع الملفات"
+      - name: ⚡ تشغيل مولد MNAENCA (scraper.py)
+        run: python scraper.py
       
-      # ═══════════════════════════════════════
-      # 🌹 الخطوة 4: عرض الملفات المنشأة
-      # ═══════════════════════════════════════
-      - name: 📋 عرض الملفات المنشأة
-        run: |
-          echo ""
-          echo "╔══════════════════════════════════════╗"
-          echo "║  🌹 ROSE SPHERE - ملفات المنشأة     ║"
-          echo "╚══════════════════════════════════════╝"
-          echo ""
-          echo "📁 الملفات:"
-          ls -la *.html *.js 2>/dev/null || echo "  ⚠️ لا توجد ملفات بعد"
-          echo ""
-          echo "📊 إحصائيات:"
-          echo "  • HTML files: $(ls -1 *.html 2>/dev/null | wc -l)"
-          echo "  • JS files: $(ls -1 *.js 2>/dev/null | wc -l)"
-          echo "  • Total lines: $(cat *.html *.js 2>/dev/null | wc -l)"
-          echo ""
-      
-      # ═══════════════════════════════════════
-      # 🌹 الخطوة 5: نشر الملفات
-      # ═══════════════════════════════════════
-      - name: 🚀 رفع الملفات إلى GitHub
-        uses: stefanzweifel/git-auto-commit-action@v5
+      - name: ☕ تجهيز Java 17
+        uses: actions/setup-java@v4
         with:
-          commit_message: "🌹 Rose Sphere - Auto Deploy [skip ci]"
-          commit_author: "Rose Sphere Bot 🤖 <actions@github.com>"
-          commit_user_email: "actions@github.com"
-          commit_user_name: "Rose Sphere Bot"
-          
-          # رفع جميع ملفات HTML و JS
-          file_pattern: '*.html *.js'
-          
-          # خيارات إضافية
-          push_options: '--force'
-          skip_dirty_check: false
-          skip_fetch: false
+          java-version: '17'
+          distribution: 'temurin'
       
-      # ═══════════════════════════════════════
-      # 🌹 الخطوة 6: تأكيد النشر
-      # ═══════════════════════════════════════
-      - name: ✅ تأكيد النشر الناجح
+      - name: 📦 تحميل gradle-wrapper.jar
         run: |
-          echo ""
-          echo "╔════════════════════════════════════════════╗"
-          echo "║                                            ║"
-          echo "║  🌹  ROSE SPHERE v3.0                     ║"
-          echo "║  ✅  تم النشر بنجاح!                       ║"
-          echo "║                                            ║"
-          echo "║  📂  الملفات المنشورة:                     ║"
-          echo "║     • auth.html                            ║"
-          echo "║     • index.html                           ║"
-          echo "║     • profile.html                         ║"
-          echo "║     • upload.html                          ║"
-          echo "║     • chat.html                            ║"
-          echo "║     • explore.html                         ║"
-          echo "║     • notifications.html                   ║"
-          echo "║     • settings.html                        ║"
-          echo "║     • firebase-config.js                   ║"
-          echo "║                                            ║"
-          echo "║  🔗 رابط المستودع:                         ║"
-          echo "║     ${{ github.server_url }}/${{ github.repository }}"
-          echo "║                                            ║"
-          echo "╚════════════════════════════════════════════╝"
-          echo ""
-
-  # ═══════════════════════════════════════════════
-  # 🌹 Job 2: إرسال إشعار
-  # ═══════════════════════════════════════════════
-  notify:
-    needs: generate-and-deploy
-    runs-on: ubuntu-latest
-    if: always()
-    
-    steps:
-      - name: 📊 ملخص النشر
-        run: |
-          if [ "${{ needs.generate-and-deploy.result }}" == "success" ]; then
-            echo "🟢 النشر نجح! 🌹 ROSE SPHERE v3.0 جاهز ✨"
-          else
-            echo "🔴 النشر فشل! راجع الأخطاء"
+          cd android-project
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "تحميل gradle-wrapper.jar..."
+            curl -L https://github.com/gradle/gradle/raw/v8.5.0/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
           fi
+      
+      - name: 🔧 بناء APK
+        run: |
+          cd android-project
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      
+      - name: 📤 رفع APK الناتج
+        uses: actions/upload-artifact@v4
+        with:
+          name: MNAENCA-Gold-APK
+          path: android-project/app/build/outputs/apk/debug/*.apk
+          retention-days: 90
