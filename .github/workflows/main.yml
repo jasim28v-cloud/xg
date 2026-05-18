@@ -1,49 +1,115 @@
-name: Build MNAENCA APK
+name: 🌐 Website to APK Builder
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
+    inputs:
+      website_url:
+        description: '🔗 رابط الموقع'
+        required: true
+        type: string
+        default: 'https://example.com'
+      app_name:
+        description: '📱 اسم التطبيق'
+        required: true
+        type: string
+        default: 'تطبيقي'
+      package_name:
+        description: '📦 اسم الحزمة'
+        required: false
+        type: string
+        default: 'com.myapp.webview'
+      version:
+        description: '📌 الإصدار'
+        required: false
+        type: string
+        default: '1.0.0'
+      icon_url:
+        description: '🎨 رابط الأيقونة (اختياري)'
+        required: false
+        type: string
+        default: ''
+      theme_color:
+        description: '🎨 لون التطبيق'
+        required: false
+        type: string
+        default: '#2196F3'
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    name: 🏗️ بناء APK للموقع
     
     steps:
-      - name: 📥 جلب الكود
+      - name: 📥 نسخ المستودع
         uses: actions/checkout@v4
-      
-      - name: 🐍 تجهيز بايثون
-        uses: actions/setup-python@v5
+        
+      - name: 🐍 تثبيت Python
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-      
-      - name: ⚡ تشغيل مولد MNAENCA (scraper.py)
-        run: python scraper.py
-      
-      - name: ☕ تجهيز Java 17
-        uses: actions/setup-java@v4
+          
+      - name: 🤖 تثبيت Android SDK
+        uses: android-actions/setup-android@v3
         with:
-          java-version: '17'
-          distribution: 'temurin'
-      
-      - name: 📦 تحميل gradle-wrapper.jar
+          packages: 'platforms;android-33 build-tools;33.0.0'
+          
+      - name: 📦 تثبيت الاعتماديات
         run: |
-          cd android-project
-          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "تحميل gradle-wrapper.jar..."
-            curl -L https://github.com/gradle/gradle/raw/v8.5.0/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
-          fi
-      
-      - name: 🔧 بناء APK
+          pip install requests beautifulsoup4
+          
+      - name: 📥 تحميل أداة البناء
         run: |
-          cd android-project
-          chmod +x gradlew
-          ./gradlew assembleDebug
-      
-      - name: 📤 رفع APK الناتج
+          mkdir -p build_tools
+          wget -O build_tools/apkbuilder https://github.com/bedevlab/rdownload/releases/download/update/apk
+          chmod +x build_tools/apkbuilder
+        continue-on-error: true
+        
+      - name: 🔨 بناء APK
+        run: |
+          python scraper.py "${{ github.event.inputs.website_url }}" \
+            --name "${{ github.event.inputs.app_name }}" \
+            --package "${{ github.event.inputs.package_name }}" \
+            --version "${{ github.event.inputs.version }}" \
+            ${ { github.event.inputs.icon_url != '' && format('--icon "{0}"', github.event.inputs.icon_url) || '' } } \
+            --color "${{ github.event.inputs.theme_color }}"
+          
+      - name: 📱 تجميع ملفات APK
+        run: |
+          mkdir -p release
+          cp generated_apks/*.apk release/
+          
+      - name: 📤 رفع APK كـ Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MNAENCA-Gold-APK
-          path: android-project/app/build/outputs/apk/debug/*.apk
+          name: ${{ github.event.inputs.app_name }}-v${{ github.event.inputs.version }}
+          path: generated_apks/*.apk
           retention-days: 90
+          
+      - name: 🚀 إنشاء Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.app_name }}-v${{ github.event.inputs.version }}-${{ github.run_number }}
+          name: "${{ github.event.inputs.app_name }} v${{ github.event.inputs.version }}"
+          body: |
+            ## 🌐 تطبيق ${{ github.event.inputs.app_name }}
+            
+            - **الموقع:** ${{ github.event.inputs.website_url }}
+            - **الإصدار:** ${{ github.event.inputs.version }}
+            - **الحزمة:** ${{ github.event.inputs.package_name }}
+            - **تاريخ البناء:** $(date +"%Y-%m-%d %H:%M:%S")
+            
+            ### 📱 تحميل التطبيق
+            حمل ملف APK من الأسفل وقم بتثبيته على جهاز الأندرويد.
+            
+            > ⚠️ تأكد من تفعيل "تثبيت التطبيقات من مصادر غير معروفة" في إعدادات جهازك.
+          files: generated_apks/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: 📊 ملخص البناء
+        run: |
+          echo "## ✅ تم بناء APK بنجاح" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **التطبيق:** ${{ github.event.inputs.app_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **الموقع:** ${{ github.event.inputs.website_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **حجم الملف:** $(ls -lh generated_apks/*.apk | awk '{print $5}')" >> $GITHUB_STEP_SUMMARY
