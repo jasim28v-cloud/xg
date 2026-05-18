@@ -1,39 +1,100 @@
-name: 📁 Create Android Project
+name: Build Real APK from Website
 
 on:
   workflow_dispatch:
     inputs:
+      website_url:
+        description: 'رابط الموقع'
+        required: true
+        type: string
+        default: 'https://example.com'
       app_name:
         description: 'اسم التطبيق'
         required: true
-        default: 'Rose Sphere'
-      package_name:
-        description: 'اسم الحزمة'
+        type: string
+        default: 'تطبيقي'
+      app_id:
+        description: 'معرف الحزمة (مثل com.example.app)'
         required: true
-        default: 'com.rosesphere.app'
-      version:
-        description: 'الإصدار'
-        required: false
-        default: '1.0.0'
+        type: string
+        default: 'com.example.app'
 
 jobs:
-  create-project:
+  scrape-and-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: 📥 تحميل الكود
+        uses: actions/checkout@v4
+
+      - name: 🐍 تجهيز Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-      
-      - name: 🏗️ إنشاء مشروع Android
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 تثبيت تبعيات Python
         run: |
-          python scraper.py \
-            --name "${{ github.event.inputs.app_name }}" \
-            --package "${{ github.event.inputs.package_name }}" \
-            --version "${{ github.event.inputs.version }}"
-      
-      - name: 📤 رفع المشروع
+          pip install -r requirements.txt
+
+      - name: 🌐 سحب الموقع
+        run: |
+          python scraper.py "${{ inputs.website_url }}" -o www
+
+      - name: 🟢 تجهيز Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 📱 تثبيت Capacitor
+        run: |
+          npm init -y
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+
+      - name: ⚙️ إنشاء إعدادات Capacitor
+        run: |
+          cat > capacitor.config.json << EOF
+          {
+            "appId": "${{ inputs.app_id }}",
+            "appName": "${{ inputs.app_name }}",
+            "webDir": "www",
+            "bundledWebRuntime": false
+          }
+          EOF
+
+      - name: ☕ تجهيز Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 🤖 تجهيز Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0'
+
+      - name: 🔨 بناء مشروع Android
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: 📦 بناء APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: 📤 رفع APK
         uses: actions/upload-artifact@v4
         with:
-          name: android-project
-          path: android_project/
+          name: ${{ inputs.app_name }}-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 90
+
+      - name: 📋 عرض النتيجة
+        run: |
+          echo "✅ تم بناء APK بنجاح!"
+          echo "📱 اسم التطبيق: ${{ inputs.app_name }}"
+          echo "🌐 الموقع: ${{ inputs.website_url }}"
+          echo "📦 حجم الـ APK: $(du -h android/app/build/outputs/apk/debug/app-debug.apk | cut -f1)"
