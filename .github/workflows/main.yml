@@ -1,100 +1,76 @@
-name: 🌐 Build Offline APK via Cordova
+name: 🚀 Build RoseSphere APK
 
 on:
   workflow_dispatch:
     inputs:
-      website_url:
-        description: '🔗 رابط الموقع'
-        required: true
-        type: string
-        default: 'https://xg-6vtg.onrender.com'
       app_name:
-        description: '📱 اسم التطبيق (إنجليزي فقط)'
+        description: '📱 اسم التطبيق'
         required: true
-        type: string
-        default: 'XGApp'
+        default: 'Rose Sphere'
       package_name:
-        description: '📦 اسم الحزمة (مثال: com.example.app)'
+        description: '📦 اسم الحزمة'
         required: true
-        type: string
-        default: 'com.jasim28v.xgapp'
+        default: 'com.rosesphere.app'
       version:
         description: '📌 الإصدار'
         required: false
-        type: string
         default: '1.0.0'
 
 jobs:
-  build-apk:
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     
     steps:
-      - name: 📥 نسخ المستودع
+      - name: 📥 سحب المستودع
         uses: actions/checkout@v4
-
-      - name: 🐍 تثبيت Python
+        
+      - name: ☕ إعداد Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          
+      - name: 🤖 إعداد Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0'
+          
+      - name: 🐍 إعداد Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
-      - name: 🟢 تثبيت Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: ☕ تثبيت وتجهيز Java 11 (المتوافقة مع Cordova)
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '11'
-
-      - name: 🤖 إعداد بيئة Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: 📦 تثبيت مكتبات بايثون و أداة Cordova
+          
+      - name: 🔨 بناء APK
         run: |
-          pip install requests beautifulsoup4 lxml html5lib
-          npm install -g cordova
-
-      - name: 🌐 تشغيل سكربت البايثون لسحب ملفات الموقع
-        run: |
-          python scraper.py "${{ github.event.inputs.website_url }}" \
+          python scraper.py \
             --name "${{ github.event.inputs.app_name }}" \
             --package "${{ github.event.inputs.package_name }}" \
             --version "${{ github.event.inputs.version }}"
-
-      - name: 🏗️ إنشاء مشروع أندرويد حقيقي عبر Cordova وبنائه
-        run: |
-          # إنشاء مشروع كوردوفا فارغ
-          cordova create myApp "${{ github.event.inputs.package_name }}" "${{ github.event.inputs.app_name }}"
           
-          # استبدال مجلد الويب الافتراضي بالموقع الذي تم سحبه بواسطة البايثون
-          rm -rf myApp/www
-          mv www myApp/www
-          
-          cd myApp
-          # إضافة منصة أندرويد للمشروع
-          cordova platform add android
-          
-          # بناء ملف الـ APK الفعلي والمترجم
-          cordova build android --release
-          
-          # تجهيز المجلد النهائي لرفع الملف
-          mkdir -p ../generated_apks
-          cp platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk ../generated_apks/${{ github.event.inputs.app_name }}.apk
-
-      - name: 📤 رفع APK النهائي كـ Artifact
+      - name: 📤 رفع APK
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.inputs.app_name }}-v${{ github.event.inputs.version }}
-          path: generated_apks/*.apk
+          path: output/*.apk
           retention-days: 90
-
-      - name: 🚀 إنشاء Release على جيتهاب
+          
+      - name: 🚀 إنشاء Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.event.inputs.version }}-${{ github.run_number }}
           name: "${{ github.event.inputs.app_name }} v${{ github.event.inputs.version }}"
-          files: generated_apks/*.apk
+          body: |
+            ## 🌹 Rose Sphere APK
+            
+            - **التطبيق:** ${{ github.event.inputs.app_name }}
+            - **الإصدار:** ${{ github.event.inputs.version }}
+            - **الحزمة:** ${{ github.event.inputs.package_name }}
+            
+            ### 📱 ملفات الموقع المضمنة:
+            - index.html, auth.html, chat.html, explore.html
+            - profile.html, settings.html, notifications.html, upload.html
+            - firebase-config.js, service-worker.js
+          files: output/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
