@@ -41,52 +41,47 @@ jobs:
     
     steps:
       - name: 📥 نسخ المستودع
-        uses: actions/checkout@v4
-        
+        uses: actions/checkout@v4 # يمكنك ترقيته إلى v5 إذا كان متوفراً قريباً
+
       - name: 🐍 تثبيت Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5 # تم الترقية إلى v5
         with:
           python-version: '3.10'
-          
+
       - name: 🤖 تثبيت Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v3 # هذه الأداة قد تحتاج لمراجعة بديل إذا لم تُحدث
         with:
           packages: 'platforms;android-33 build-tools;33.0.0'
-          
+
       - name: 📦 تثبيت الاعتماديات
         run: |
           pip install requests beautifulsoup4
-          
-      - name: 📥 تحميل أداة البناء
-        run: |
-          mkdir -p build_tools
-          wget -O build_tools/apkbuilder https://github.com/bedevlab/rdownload/releases/download/update/apk
-          chmod +x build_tools/apkbuilder
-        continue-on-error: true
-        
+
+      # تم حذف خطوة تحميل أداة البناء لأنها كانت تسبب الخطأ 8 وهي غير ضرورية.
+
       - name: 🔨 بناء APK
         run: |
           python scraper.py "${{ github.event.inputs.website_url }}" \
             --name "${{ github.event.inputs.app_name }}" \
             --package "${{ github.event.inputs.package_name }}" \
             --version "${{ github.event.inputs.version }}" \
-            ${ { github.event.inputs.icon_url != '' && format('--icon "{0}"', github.event.inputs.icon_url) || '' } } \
+            ${{ github.event.inputs.icon_url != '' && format('--icon "{0}"', github.event.inputs.icon_url) || '' }} \
             --color "${{ github.event.inputs.theme_color }}"
-          
+
       - name: 📱 تجميع ملفات APK
         run: |
           mkdir -p release
           cp generated_apks/*.apk release/
-          
+
       - name: 📤 رفع APK كـ Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4 # يمكنك ترقيته إلى v5 إذا كان متوفراً
         with:
           name: ${{ github.event.inputs.app_name }}-v${{ github.event.inputs.version }}
           path: generated_apks/*.apk
           retention-days: 90
-          
+
       - name: 🚀 إنشاء Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2 # تم الترقية إلى v2
         with:
           tag_name: ${{ github.event.inputs.app_name }}-v${{ github.event.inputs.version }}-${{ github.run_number }}
           name: "${{ github.event.inputs.app_name }} v${{ github.event.inputs.version }}"
@@ -105,11 +100,10 @@ jobs:
           files: generated_apks/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
+
       - name: 📊 ملخص البناء
         run: |
           echo "## ✅ تم بناء APK بنجاح" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **التطبيق:** ${{ github.event.inputs.app_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **الموقع:** ${{ github.event.inputs.website_url }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **حجم الملف:** $(ls -lh generated_apks/*.apk | awk '{print $5}')" >> $GITHUB_STEP_SUMMARY
